@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { CorporateAction, parseCorporateActions } from "@/lib/advancedEngine";
 
-export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, trades, setTrades, setHasUnsavedChanges }: any) {
+export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, trades, setTrades, setHasUnsavedChanges, hasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -153,15 +153,15 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: "16px", marginBottom: "24px", padding: "16px", background: "rgba(255,255,255,0.02)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", flexWrap: "wrap", alignItems: "center" }}>
-        <div className="upload-label" style={{ marginBottom: 0 }}>Auto-Fetch:</div>
-        <input type="text" placeholder="Symbol (e.g. AAPL)" value={fetchSymbol} onChange={e => setFetchSymbol(e.target.value)} style={{ padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "12px" }} />
-        <input type="date" value={fetchStart} onChange={e => setFetchStart(e.target.value)} style={{ padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "12px" }} />
-        <input type="date" value={fetchEnd} onChange={e => setFetchEnd(e.target.value)} style={{ padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "12px" }} />
-        <button className="template-btn" onClick={handleAutoFetch} disabled={isFetching}>
-          {isFetching ? "Fetching..." : "Fetch"}
-        </button>
-      </div>
+      <div style={{ display: "flex", gap: "16px", marginBottom: "24px", padding: "16px", background: "rgba(204,164,61,0.05)", borderRadius: "var(--radius-md)", border: "1px solid rgba(204,164,61,0.2)", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--ms-gold)" }}>Smart Auto-Fetch</div>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Automatically fetches splits and dividends from Yahoo Finance for all tickers in your Transactions tab. Ensure your trades are saved first.</div>
+          </div>
+          <button className="template-btn" onClick={handleAutoFetch} disabled={isFetching} style={{ background: "var(--ms-gold)", color: "#000", border: "none", padding: "8px 16px" }}>
+            {isFetching ? "Fetching..." : "Fetch All Missing Actions"}
+          </button>
+        </div>
 
       <div className="table-wrap">
         <table className="data-table">
