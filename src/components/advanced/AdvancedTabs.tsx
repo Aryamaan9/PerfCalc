@@ -427,8 +427,12 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
       
       {showScopeManager && (
         <ScopeManagerModal
+          families={families}
           onClose={() => setShowScopeManager(false)}
-          onRegroup={reloadFamilies}
+          onRegroup={async () => {
+            setShowScopeManager(false);
+            await reloadFamilies();
+          }}
         />
       )}
     </div>
