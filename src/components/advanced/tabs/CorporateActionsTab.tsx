@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { CorporateAction, parseCorporateActions } from "@/lib/advancedEngine";
 
-export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, setHasUnsavedChanges }: any) {
+export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, trades, setTrades, setHasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -26,28 +26,7 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
   };
 
   const handleAutoFetch = async () => {
-    if (!fetchSymbol || !fetchStart || !fetchEnd) {
-      alert("Please provide Symbol, Start Date, and End Date for auto-fetch.");
-      return;
-    }
-    setIsFetching(true);
-    try {
-      const res = await fetch("/api/portfolio/advancedAutoFetch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: fetchSymbol, startDate: fetchStart, endDate: fetchEnd })
-      });
-      const data = await res.json();
-      if (data.actions) {
-        setActions((prev: any) => [...prev, ...data.actions].sort((a: any, b: any) => a.date.localeCompare(b.date)));
-        alert(`Fetched ${data.actions.length} actions!`);
-        setHasUnsavedChanges(true);
-      }
-    } catch (err: any) {
-      alert("Fetch error: " + err.message);
-    } finally {
-      setIsFetching(false);
-    }
+    // ... we can leave manual autofetch for debugging
   };
 
   const handleEdit = (idx: number, field: string, value: any) => {
@@ -58,6 +37,58 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
 
   const handleDelete = (idx: number) => {
     setActions(actions.filter((_: any, i: number) => i !== idx));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleAccept = (idx: number) => {
+    const action = actions[idx];
+    
+    // Calculate shares on date
+    let sharesOnDate = 0;
+    for (const t of trades || []) {
+      if (t.symbol === action.symbol && t.date < action.date) {
+        if (["Buy", "Transfer In", "Split Adjust", "Bonus Issue"].includes(t.side)) sharesOnDate += t.qty;
+        if (["Sell", "Transfer Out", "Merger Swap"].includes(t.side)) sharesOnDate -= t.qty;
+      }
+    }
+
+    const actionId = action.id || `action-${Date.now()}-${idx}`;
+    let newTrade = null;
+
+    if (action.action === "DIVIDEND") {
+      newTrade = {
+        date: action.date,
+        symbol: "$CASH",
+        rawSymbol: "$CASH",
+        side: "Dividend Payout",
+        qty: sharesOnDate * action.value,
+        fillPrice: 1,
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId
+      };
+    } else if (action.action === "SPLIT" || action.action === "BONUS") {
+      newTrade = {
+        date: action.date,
+        symbol: action.symbol,
+        rawSymbol: action.symbol,
+        side: "Split Adjust",
+        qty: sharesOnDate * (action.value - 1),
+        fillPrice: 0,
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId
+      };
+    }
+
+    if (newTrade) {
+      // Add synthetic trade
+      setTrades((prev: any) => [...prev, newTrade].sort((a: any, b: any) => a.date.localeCompare(b.date)));
+    }
+    
+    // Update action status
+    const updated = actions.map((item: any, i: number) => i === idx ? { ...item, status: "APPLIED", id: actionId } : item);
+    setActions(updated);
     setHasUnsavedChanges(true);
   };
 
@@ -188,7 +219,14 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
                   </select>
                 </td>
                 <td>
-                  <button onClick={() => handleDelete(idx)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕ Remove</button>
+                  {a.status === "PENDING" ? (
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={() => handleAccept(idx)} style={{ color: "var(--color-positive)", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✓ Accept</button>
+                      <button onClick={() => handleDelete(idx)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => handleDelete(idx)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕ Remove</button>
+                  )}
                 </td>
               </tr>
             ))}

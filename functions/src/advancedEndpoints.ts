@@ -309,14 +309,69 @@ export const advancedAutoFetchActions = functions
     corsHandler(req, res, async () => {
       if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
       try {
-        const { symbol, startDate, endDate } = req.body;
-        if (!symbol || !startDate || !endDate) {
-          res.status(400).json({ error: "symbol, startDate, endDate required" }); return;
+        const { familyId, userId, brokerId } = req.body;
+        if (!familyId || !userId) {
+          res.status(400).json({ error: "familyId and userId required" }); return;
         }
         
-        const actions = await fetchCorporateActions(symbol, startDate, endDate);
-        res.status(200).json({ actions });
+        const db = getFirestore(admin.app(), "default");
+        const brokersRef = db.collection("advanced_workspaces").doc(familyId).collection("users").doc(userId).collection("brokers");
+        
+        const snapshots = brokerId 
+          ? [await brokersRef.doc(brokerId).get()] 
+          : (await brokersRef.get()).docs;
+          
+        let newActionsAdded = 0;
+        const batch = db.batch();
+
+        for (const snap of snapshots) {
+          if (!snap.exists) continue;
+          const data = snap.data();
+          if (!data) continue;
+
+          const trades = data.trades || [];
+          const existingActions = data.actions || [];
+
+          if (trades.length === 0) continue;
+
+          const symbols = new Set<string>();
+          let minDate = "9999-12-31";
+          let maxDate = "0000-01-01";
+          
+          for (const t of trades) {
+            if (t.symbol === "$CASH") continue;
+            symbols.add(t.symbol);
+            if (t.date < minDate) minDate = t.date;
+            if (t.date > maxDate) maxDate = t.date;
+          }
+
+          if (symbols.size === 0) continue;
+          
+          let updatedActions = [...existingActions];
+          for (const sym of Array.from(symbols)) {
+            const fetched = await fetchCorporateActions(sym, minDate, maxDate);
+            
+            for (const fa of fetched) {
+              const exists = updatedActions.some(
+                (ea: any) => ea.symbol === fa.symbol && ea.date === fa.date && ea.action === fa.action && Math.abs(ea.value - fa.value) < 0.01
+              );
+              if (!exists) {
+                updatedActions.push({ ...fa, status: "PENDING" });
+                newActionsAdded++;
+              }
+            }
+          }
+
+          if (updatedActions.length > existingActions.length) {
+            batch.update(snap.ref, { actions: updatedActions });
+          }
+        }
+
+        await batch.commit();
+
+        res.status(200).json({ success: true, newActionsAdded });
       } catch (err: any) {
+        console.error("AutoFetch Error:", err);
         res.status(500).json({ error: err.message });
       }
     });

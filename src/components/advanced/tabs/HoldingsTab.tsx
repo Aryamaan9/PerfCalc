@@ -8,6 +8,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [snapshotDate, setSnapshotDate] = useState("");
+  const [showClosed, setShowClosed] = useState(false);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -35,30 +36,52 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
   };
 
   useEffect(() => {
-    // Optionally auto-run analyze if they switch to this tab and have a user
     if (userId) {
       handleAnalyze();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyId, userId, brokerId]);
 
-  const selectedHoldings = useMemo(() => {
-    if (!result || !result.dailyPortfolio) return {};
-    const snapshot = result.dailyPortfolio.find(d => d.date === snapshotDate);
-    if (snapshot) return snapshot.holdings;
-    
-    // Find closest date before snapshotDate if exact match not found
-    const pastSnapshots = result.dailyPortfolio.filter(d => d.date <= snapshotDate);
-    if (pastSnapshots.length > 0) return pastSnapshots[pastSnapshots.length - 1].holdings;
-    return {};
+  const { snapshot, cashBalance } = useMemo(() => {
+    if (!result || !result.dailyPortfolio) return { snapshot: {}, cashBalance: 0 };
+    let snap = result.dailyPortfolio.find(d => d.date === snapshotDate);
+    if (!snap) {
+      const pastSnapshots = result.dailyPortfolio.filter(d => d.date <= snapshotDate);
+      if (pastSnapshots.length > 0) snap = pastSnapshots[pastSnapshots.length - 1];
+    }
+    return {
+      snapshot: snap?.holdings || {},
+      cashBalance: snap?.cashBalance || 0
+    };
   }, [result, snapshotDate]);
+
+  const activeHoldings = useMemo(() => {
+    return Object.entries(snapshot).filter(([_, h]: any) => h.shares > 0);
+  }, [snapshot]);
+
+  const closedPositions = useMemo(() => {
+    return Object.entries(snapshot).filter(([_, h]: any) => h.shares <= 0 && Math.abs(h.realizedGain) >= 0.01);
+  }, [snapshot]);
+
+  const totals = useMemo(() => {
+    let cost = 0, value = 0, unrealized = 0, realized = 0;
+    activeHoldings.forEach(([_, h]: any) => {
+      cost += h.cost || 0;
+      value += h.value || 0;
+      unrealized += h.unrealizedGain || 0;
+    });
+    Object.values(snapshot).forEach((h: any) => {
+      realized += h.realizedGain || 0;
+    });
+    return { cost, value, unrealized, realized };
+  }, [activeHoldings, snapshot]);
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
         <div>
-          <h2 className="brand-name" style={{ margin: 0, fontSize: "16px" }}>Holdings <span>& Audit Report</span></h2>
-          <p className="brand-sub">Point-in-time holdings and system abnormality auditing.</p>
+          <h2 className="brand-name" style={{ margin: 0, fontSize: "16px" }}>Holdings <span>& Performance</span></h2>
+          <p className="brand-sub">FIFO cost basis, realized gains, and point-in-time valuation.</p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
           {result && (
@@ -68,7 +91,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
             </>
           )}
           <button className="template-btn" onClick={handleAnalyze} disabled={loading}>
-            {loading ? "Analyzing..." : "Refresh Audit"}
+            {loading ? "Analyzing..." : "Refresh Report"}
           </button>
         </div>
       </div>
@@ -77,82 +100,139 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
 
       {!result && !loading && !error && (
         <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-          Click Refresh Audit to load data for this scope.
+          Click Refresh Report to load data for this scope.
         </div>
       )}
 
       {result && (
-        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "32px" }}>
+            <div className="stat-card">
+              <div className="stat-label">Total Portfolio Value</div>
+              <div className="stat-value">${(totals.value + cashBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Total Invested Cost</div>
+              <div className="stat-value">${totals.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Total Unrealized Gain</div>
+              <div className={`stat-value ${totals.unrealized >= 0 ? 'positive' : 'negative'}`}>
+                {totals.unrealized >= 0 ? '+' : '-'}${Math.abs(totals.unrealized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Total Realized Gain</div>
+              <div className={`stat-value ${totals.realized >= 0 ? 'positive' : 'negative'}`}>
+                {totals.realized >= 0 ? '+' : '-'}${Math.abs(totals.realized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Cash Balance</div>
+              <div className="stat-value">${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+
+          <div className="chart-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="chart-title">Active Holdings</h3>
+            <button 
+              onClick={() => setShowClosed(!showClosed)}
+              style={{ background: "none", border: "1px solid var(--border)", color: "var(--text-secondary)", padding: "4px 12px", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: "12px" }}
+            >
+              {showClosed ? "Hide Closed Positions" : "Show Closed Positions"}
+            </button>
+          </div>
           
-          {/* Holdings */}
-          <div style={{ flex: 1, minWidth: "400px" }}>
-            <div className="chart-header">
-              <h3 className="chart-title">Holdings as of {snapshotDate}</h3>
-            </div>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
+          <div className="table-wrap" style={{ marginBottom: "32px" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th style={{ textAlign: "right" }}>Price</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Cost (FIFO)</th>
+                  <th style={{ textAlign: "right" }}>Value</th>
+                  <th style={{ textAlign: "right" }}>Unrealized Gain</th>
+                  <th style={{ textAlign: "right" }}>Realized Gain</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeHoldings.length === 0 && (
                   <tr>
-                    <th>Symbol</th>
-                    <th>Shares</th>
-                    <th>Value</th>
+                    <td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>No active holdings for this date.</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {Object.keys(selectedHoldings).length === 0 && (
+                )}
+                {activeHoldings.map(([sym, h]: any) => (
+                  <tr key={sym}>
+                    <td style={{ fontWeight: "bold" }}>{sym}</td>
+                    <td style={{ textAlign: "right" }}>${h.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>{h.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td style={{ textAlign: "right" }}>${h.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>${h.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }} className={h.unrealizedGain >= 0 ? "positive" : "negative"}>
+                      {h.unrealizedGain > 0 ? "+" : ""}${h.unrealizedGain.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ textAlign: "right" }} className={h.realizedGain >= 0 ? "positive" : "negative"}>
+                      {h.realizedGain > 0 ? "+" : ""}${h.realizedGain.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {activeHoldings.length > 0 && (
+                <tfoot>
+                  <tr style={{ fontWeight: "bold", background: "rgba(255,255,255,0.05)" }}>
+                    <td>Total</td>
+                    <td></td>
+                    <td></td>
+                    <td style={{ textAlign: "right" }}>${totals.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>${totals.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }} className={totals.unrealized >= 0 ? "positive" : "negative"}>
+                      {totals.unrealized > 0 ? "+" : ""}${totals.unrealized.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+
+          {showClosed && (
+            <div style={{ opacity: 0.8 }}>
+              <div className="chart-header">
+                <h3 className="chart-title">Closed Positions</h3>
+              </div>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
                     <tr>
-                      <td colSpan={3} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>No holdings for this date.</td>
+                      <th>Symbol</th>
+                      <th style={{ textAlign: "right" }}>Qty</th>
+                      <th style={{ textAlign: "right" }}>Value</th>
+                      <th style={{ textAlign: "right" }}>Realized Gain</th>
                     </tr>
-                  )}
-                  {Object.entries(selectedHoldings).map(([sym, holding]: any) => (
-                    <tr key={sym}>
-                      <td style={{ fontWeight: "bold" }}>{sym}</td>
-                      <td>{holding.shares.toFixed(2)}</td>
-                      <td className="positive">₹{holding.value.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Audit Report */}
-          <div style={{ flex: 1, minWidth: "400px" }}>
-            <div className="chart-header">
-              <h3 className="chart-title">Abnormality Audit Report</h3>
-            </div>
-            
-            {result.auditAlerts && result.auditAlerts.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {result.auditAlerts.map((alert, i) => (
-                  <div key={i} style={{ padding: "12px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: "var(--radius-sm)", color: "var(--color-negative)", fontSize: "12px" }}>
-                    ⚠️ {alert}
-                  </div>
-                ))}
+                  </thead>
+                  <tbody>
+                    {closedPositions.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>No closed positions with realized gains.</td>
+                      </tr>
+                    )}
+                    {closedPositions.map(([sym, h]: any) => (
+                      <tr key={sym}>
+                        <td style={{ fontWeight: "bold" }}>{sym}</td>
+                        <td style={{ textAlign: "right" }}>0</td>
+                        <td style={{ textAlign: "right" }}>$0.00</td>
+                        <td style={{ textAlign: "right" }} className={h.realizedGain >= 0 ? "positive" : "negative"}>
+                          {h.realizedGain > 0 ? "+" : ""}${h.realizedGain.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <div style={{ padding: "12px 16px", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: "var(--radius-sm)", color: "var(--color-positive)", fontSize: "12px" }}>
-                ✅ Passed: Zero abnormalities detected. Cash, holdings, and pricing are stable.
-              </div>
-            )}
-
-            <div className="chart-header" style={{ marginTop: "32px" }}>
-              <h3 className="chart-title">Reconciliation Warnings</h3>
             </div>
-            {result.reconciliationWarnings && result.reconciliationWarnings.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {result.reconciliationWarnings.map((warn, i) => (
-                  <div key={i} style={{ padding: "12px 16px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "var(--radius-sm)", color: "var(--color-warning)", fontSize: "12px" }}>
-                    ℹ️ {warn}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ padding: "12px", color: "var(--text-muted)", fontSize: "12px" }}>No warnings.</div>
-            )}
-            
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );

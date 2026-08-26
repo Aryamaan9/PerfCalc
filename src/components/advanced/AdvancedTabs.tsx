@@ -415,9 +415,9 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
             </div>
           ) : (
             <>
-              {activeTab === "transactions" && <TransactionsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} trades={trades} setTrades={setTrades} setHasUnsavedChanges={setHasUnsavedChanges} />}
+              {activeTab === "transactions" && <TransactionsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} trades={trades} setTrades={setTrades} actions={actions} setActions={setActions} setHasUnsavedChanges={setHasUnsavedChanges} />}
               {activeTab === "tickers" && <TickersTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} trades={trades} />}
-              {activeTab === "corporateActions" && <CorporateActionsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} actions={actions} setActions={setActions} setHasUnsavedChanges={setHasUnsavedChanges} />}
+              {activeTab === "corporateActions" && <CorporateActionsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} actions={actions} setActions={setActions} trades={trades} setTrades={setTrades} setHasUnsavedChanges={setHasUnsavedChanges} />}
               {activeTab === "holdings" && <HoldingsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} />}
               {activeTab === "analytics" && <AnalyticsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} />}
             </>

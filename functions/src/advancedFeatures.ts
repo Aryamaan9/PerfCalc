@@ -37,7 +37,7 @@ export async function fetchCorporateActions(
             symbol: ticker,
             action: "DIVIDEND",
             value: div.amount,
-            status: "APPLIED" // Or PENDING based on flow
+            status: "PENDING" // Or PENDING based on flow
           });
         }
       }
@@ -52,7 +52,7 @@ export async function fetchCorporateActions(
             action: "SPLIT",
             value,
             ratio: split.splitRatio,
-            status: "APPLIED"
+            status: "PENDING"
           });
         }
       }

@@ -3,14 +3,22 @@ import * as XLSX from "xlsx";
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface Trade {
+  id?: string;
   symbol: string;
   rawSymbol: string;
-  side: "Buy" | "Sell" | "Transfer In" | "Transfer Out";
+  side: "Buy" | "Sell" | "Transfer In" | "Transfer Out" | "Split Adjust" | "Bonus Issue" | "Dividend Payout" | "Merger Swap";
   qty: number;
   fillPrice: number;
   commission: number;
-  date: string; // YYYY-MM-DD
+  date: string;
   broker?: string;
+  linkedActionId?: string;
+}
+
+export interface BuyLot {
+  date: string;
+  qty: number;
+  totalCost: number;
 }
 
 export interface PriceRecord {
@@ -36,7 +44,7 @@ export interface DailyPortfolioEntry {
   totalValue: number;
   stockValue: number;
   cashBalance: number;
-  holdings: Record<string, { shares: number; price: number; value: number }>;
+  holdings: Record<string, { shares: number; price: number; value: number; cost: number; unrealizedGain: number; realizedGain: number }>;
 }
 
 export interface AnalysisResult {
@@ -49,6 +57,7 @@ export interface AnalysisResult {
     currentValue: number;
     holdingReturn: number;
     totalDividends: number;
+    totalRealizedGain: number;
     uniqueStocks: string[];
     dateRange: { start: string; end: string };
   };
@@ -409,45 +418,13 @@ export function computePortfolio(
   rawActions: CorporateAction[]
 ): AnalysisResult {
   const trades = rawTrades.map(t => ({ ...t }));
-  const corporateActions = rawActions.map(a => ({ ...a }));
   const priceMap = buildPriceMap(prices);
-
-  const retrospectivelyAppliedSplits = new Set<CorporateAction>();
-
-  // Apply retrospective split/bonus adjustment
-  const splits = corporateActions
-    .filter(a => (a.action === "SPLIT" || a.action === "BONUS") && a.status !== "IGNORED" && a.status !== "PENDING")
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  for (const split of splits) {
-    const splitDate = split.date;
-    const symbol = split.symbol;
-    const ratio = split.value;
-
-    if (isPriceFileSplitAdjusted(symbol, undefined, splitDate, trades, priceMap, ratio)) {
-      retrospectivelyAppliedSplits.add(split);
-
-      for (const t of trades) {
-        if (t.symbol === symbol && t.date < splitDate) {
-          t.qty *= ratio;
-          t.fillPrice /= ratio;
-        }
-      }
-
-      for (const a of corporateActions) {
-        if (a.symbol === symbol && a.date < splitDate && a.action === "DIVIDEND") {
-          a.value /= ratio;
-        }
-      }
-    }
-  }
 
   const missingPriceDates: Array<{ ticker: string; date: string; interpolated: number }> = [];
 
   const allDates = new Set<string>();
   trades.forEach(t => allDates.add(t.date));
   prices.forEach(p => allDates.add(p.date));
-  corporateActions.forEach(a => allDates.add(a.date));
 
   const sorted = Array.from(allDates).sort();
   if (!sorted.length) throw new Error("No data found in uploaded files.");
@@ -464,120 +441,98 @@ export function computePortfolio(
   }
 
   const holdings: Record<string, number> = {};
-  const costBases: Record<string, { shares: number; cost: number }> = {};
+  const lots: Record<string, BuyLot[]> = {};
+  const realizedGains: Record<string, number> = {};
+  let totalRealizedGain = 0;
   let totalDividends = 0;
-  let cashBalance = 0; // Track cash for abnormality audit
+  let cashBalance = 0;
   const symbolMap: Record<string, string> = {};
 
-  const tradesByDate  = new Map<string, Trade[]>();
-  const actionsByDate = new Map<string, CorporateAction[]>();
+  const tradesByDate = new Map<string, Trade[]>();
 
   for (const t of trades) {
     if (!tradesByDate.has(t.date)) tradesByDate.set(t.date, []);
     tradesByDate.get(t.date)!.push(t);
     if (t.symbol !== "$CASH") symbolMap[t.rawSymbol] = t.symbol;
   }
-  for (const a of corporateActions) {
-    if (!actionsByDate.has(a.date)) actionsByDate.set(a.date, []);
-    actionsByDate.get(a.date)!.push(a);
-  }
 
   const dailyPortfolio: DailyPortfolioEntry[] = [];
   const seenMissing = new Set<string>();
 
   for (const date of fullDates) {
-    // Apply trades
     for (const t of (tradesByDate.get(date) || [])) {
       const s = t.side.toLowerCase();
-      
-      // Update cash balances based on trade types
       const cost = t.qty * t.fillPrice + t.commission;
-      if (s === "buy") {
-        cashBalance -= cost;
-      } else if (s === "sell") {
-        cashBalance += (t.qty * t.fillPrice - t.commission);
-      }
 
       if (t.symbol === "$CASH") {
         if (s === "buy" || s === "transfer in" || s === "transfer_in") cashBalance += t.qty;
         if (s === "sell" || s === "transfer out" || s === "transfer_out") cashBalance -= t.qty;
       } else {
         if (s === "buy" || s === "transfer in" || s === "transfer_in") {
+          cashBalance -= cost;
           holdings[t.symbol] = (holdings[t.symbol] || 0) + t.qty;
-          if (!costBases[t.symbol]) costBases[t.symbol] = { shares: 0, cost: 0 };
-          costBases[t.symbol].shares += t.qty;
-          costBases[t.symbol].cost += cost;
-        } else if (s === "sell" || s === "transfer out" || s === "transfer_out") {
-          holdings[t.symbol] = (holdings[t.symbol] || 0) - t.qty; // Allow negative for audit
-          if (costBases[t.symbol] && costBases[t.symbol].shares > 0) {
-            const avgPrice = costBases[t.symbol].cost / costBases[t.symbol].shares;
-            costBases[t.symbol].shares = Math.max(0, costBases[t.symbol].shares - t.qty);
-            costBases[t.symbol].cost = costBases[t.symbol].shares * avgPrice;
+          
+          if (!lots[t.symbol]) lots[t.symbol] = [];
+          lots[t.symbol].push({ date: t.date, qty: t.qty, totalCost: cost });
+
+        } else if (s === "split adjust" || s === "bonus issue") {
+          const currentShares = holdings[t.symbol] || 0;
+          holdings[t.symbol] += t.qty;
+          
+          if (currentShares > 0 && lots[t.symbol]) {
+            const ratio = (currentShares + t.qty) / currentShares;
+            lots[t.symbol].forEach(lot => {
+              lot.qty *= ratio;
+            });
+          } else {
+             if (!lots[t.symbol]) lots[t.symbol] = [];
+             lots[t.symbol].push({ date: t.date, qty: t.qty, totalCost: 0 });
           }
+
+        } else if (s === "sell" || s === "transfer out" || s === "transfer_out" || s === "merger swap") {
+          const proceeds = (t.qty * t.fillPrice - t.commission);
+          cashBalance += proceeds;
+          holdings[t.symbol] = (holdings[t.symbol] || 0) - t.qty; 
+          
+          let sharesToSell = t.qty;
+          let costOfSold = 0;
+          
+          if (lots[t.symbol]) {
+            while (sharesToSell > 0 && lots[t.symbol].length > 0) {
+              const firstLot = lots[t.symbol][0];
+              if (firstLot.qty <= sharesToSell) {
+                sharesToSell -= firstLot.qty;
+                costOfSold += firstLot.totalCost;
+                lots[t.symbol].shift();
+              } else {
+                const fraction = sharesToSell / firstLot.qty;
+                const costPortion = firstLot.totalCost * fraction;
+                costOfSold += costPortion;
+                firstLot.qty -= sharesToSell;
+                firstLot.totalCost -= costPortion;
+                sharesToSell = 0;
+              }
+            }
+          }
+          
+          const gain = proceeds - costOfSold;
+          if (!realizedGains[t.symbol]) realizedGains[t.symbol] = 0;
+          realizedGains[t.symbol] += gain;
+          totalRealizedGain += gain;
+        } else if (s === "dividend payout") {
+          cashBalance += t.fillPrice;
+          totalDividends += t.fillPrice;
         }
       }
     }
 
-    // Apply corporate actions
-    for (const a of (actionsByDate.get(date) || [])) {
-      if (a.status === "IGNORED" || a.status === "PENDING") continue;
-
-      if (a.action === "SPLIT" || a.action === "BONUS") {
-        if (!retrospectivelyAppliedSplits.has(a)) {
-          if (holdings[a.symbol]) {
-            holdings[a.symbol] *= a.value;
-          }
-          if (costBases[a.symbol]) {
-            costBases[a.symbol].shares *= a.value;
-          }
-        }
-      } else if (a.action === "DIVIDEND") {
-        const div = (holdings[a.symbol] || 0) * a.value;
-        a.totalAmount = div;
-        totalDividends += div;
-      } else if (a.action === "MERGER") {
-        // e.g. Company A (symbol) merges into Company B (targetSymbol) at ratio `value` (e.g. 1 A -> 1.5 B)
-        const currentShares = holdings[a.symbol] || 0;
-        if (currentShares > 0 && a.targetSymbol) {
-          const newShares = currentShares * a.value;
-          const oldCost = costBases[a.symbol]?.cost || 0;
-          
-          holdings[a.symbol] = 0;
-          if (costBases[a.symbol]) {
-            costBases[a.symbol].shares = 0;
-            costBases[a.symbol].cost = 0;
-          }
-          
-          holdings[a.targetSymbol] = (holdings[a.targetSymbol] || 0) + newShares;
-          if (!costBases[a.targetSymbol]) costBases[a.targetSymbol] = { shares: 0, cost: 0 };
-          costBases[a.targetSymbol].shares += newShares;
-          costBases[a.targetSymbol].cost += oldCost;
-        }
-      } else if (a.action === "DEMERGER") {
-        // e.g. Company A (symbol) spins off Company B (targetSymbol). `value` = ratio (e.g. 1 B for every 1 A).
-        const currentShares = holdings[a.symbol] || 0;
-        if (currentShares > 0 && a.targetSymbol) {
-          const newShares = currentShares * a.value;
-          holdings[a.targetSymbol] = (holdings[a.targetSymbol] || 0) + newShares;
-          
-          // Cost basis allocation for demergers is complex, typically a percentage split. 
-          // For simplicity in MVP, we assign 0 cost basis to the spun-off entity unless specified.
-          if (!costBases[a.targetSymbol]) costBases[a.targetSymbol] = { shares: 0, cost: 0 };
-          costBases[a.targetSymbol].shares += newShares;
-        }
-      } else if (a.action === "RIGHTS") {
-        // Rights issues mathematically adjust cost basis or holdings if subscribed. 
-        // For MVP, rights issues serve as audit trails rather than auto-adjusting shares 
-        // since user must choose to exercise them.
-      }
-    }
-
-    // Compute stock value
     let stockValue = 0;
     const snap: DailyPortfolioEntry["holdings"] = {};
 
     for (const [sym, shares] of Object.entries(holdings)) {
-      if (shares <= 0) continue;
+      const realizedGain = realizedGains[sym] || 0;
+      if (shares <= 0 && Math.abs(realizedGain) < 0.01) continue;
+
       const trade = trades.find(t => t.symbol === sym);
       const rawSym = trade?.rawSymbol;
 
@@ -592,9 +547,20 @@ export function computePortfolio(
           missingPriceDates.push({ ticker: sym, date, interpolated: price });
         }
       }
-      const value = shares * price;
+      
+      const cost = (lots[sym] || []).reduce((acc, lot) => acc + lot.totalCost, 0);
+      const value = shares > 0 ? shares * price : 0;
+      const unrealizedGain = value - cost;
+      
       stockValue += value;
-      snap[sym] = { shares, price, value };
+      snap[sym] = {
+        shares,
+        price,
+        value,
+        cost,
+        unrealizedGain,
+        realizedGain
+      };
     }
 
     dailyPortfolio.push({
@@ -602,100 +568,37 @@ export function computePortfolio(
       totalValue: stockValue + cashBalance,
       stockValue,
       cashBalance,
-      holdings: snap,
+      holdings: snap
     });
   }
 
-  // Cost basis of active holdings at the end
-  const finalInvested = Object.values(costBases).reduce((acc, item) => acc + item.cost, 0);
-
+  const finalInvested = Object.values(lots).reduce((acc, symLots) => acc + symLots.reduce((sum, lot) => sum + lot.totalCost, 0), 0);
   const vals = dailyPortfolio.map(d => d.totalValue).filter(v => v > 0);
   const lastEntry = dailyPortfolio[dailyPortfolio.length - 1];
-  const currentValue = lastEntry?.totalValue || 0;
-  const peakValue = Math.max(...vals, 0);
-  const holdingReturn = finalInvested > 0 ? ((currentValue - finalInvested) / finalInvested) * 100 : 0;
-
-  // ─── Anomaly Detection / Reconciliation & Audit ───
-  const reconciliationWarnings = new Set<string>();
-  const auditAlerts = new Set<string>();
-
-  if (dailyPortfolio.length > 0) {
-    const firstDay = dailyPortfolio[0];
-    if (firstDay.cashBalance < -0.01) {
-      auditAlerts.add(`Negative Cash Balance: Cash fell to ${firstDay.cashBalance.toFixed(2)} on ${firstDay.date}`);
-    }
-    for (const [sym, holding] of Object.entries(firstDay.holdings)) {
-      if (holding.shares < 0) {
-        auditAlerts.add(`Negative Holdings: ${sym.replace(".NS", "")} shares fell below zero (${holding.shares}) on ${firstDay.date}`);
-      }
-    }
-  }
-
-  for (let i = 1; i < dailyPortfolio.length; i++) {
-    const prevDay = dailyPortfolio[i - 1];
-    const currDay = dailyPortfolio[i];
-
-    if (currDay.cashBalance < -0.01 && prevDay.cashBalance >= -0.01) {
-      auditAlerts.add(`Negative Cash Balance: Cash fell to ${currDay.cashBalance.toFixed(2)} on ${currDay.date}`);
-    }
-
-    for (const [sym, currHolding] of Object.entries(currDay.holdings)) {
-      if (currHolding.shares < 0 && (!prevDay.holdings[sym] || prevDay.holdings[sym].shares >= 0)) {
-        auditAlerts.add(`Negative Holdings: ${sym.replace(".NS", "")} shares fell below zero (${currHolding.shares}) on ${currDay.date}`);
-      }
-
-      const prevHolding = prevDay.holdings[sym];
-      if (prevHolding && prevHolding.value > 0 && currHolding.value > 0) {
-        let tradeNetValue = 0;
-        const dayTrades = tradesByDate.get(currDay.date) || [];
-        for (const t of dayTrades) {
-          if (t.symbol === sym) {
-            tradeNetValue += (t.side.toLowerCase().includes("buy") || t.side.toLowerCase().includes("in") ? 1 : -1) * t.qty * t.fillPrice;
-          }
-        }
-
-        const expectedValue = prevHolding.value + tradeNetValue;
-        if (expectedValue > 0) {
-          const ratio = currHolding.value / expectedValue;
-          
-          if (ratio > 1.5 || ratio < 0.5) {
-            auditAlerts.add(`Extreme Volatility: ${sym.replace(".NS", "")} changed by ${Math.abs((ratio - 1) * 100).toFixed(0)}% on ${currDay.date}`);
-          }
-
-          if (ratio > 1.25 || ratio < 0.75) {
-            const hasRecentAction = corporateActions.some(
-              a => a.symbol === sym && Math.abs(daysBetween(a.date, currDay.date)) <= 5
-            );
-
-            if (hasRecentAction) {
-              const direction = ratio > 1 ? "surged" : "dropped";
-              const percent = Math.abs((ratio - 1) * 100).toFixed(0);
-              reconciliationWarnings.add(
-                `Reconciliation Alert: ${sym.replace(".NS", "")} holding value ${direction} by ${percent}% on ${currDay.date}. Verify that Corporate Action ratios and price adjustments are correct.`
-              );
-            }
-          }
-        }
-      }
-    }
+  const currentValue = lastEntry ? lastEntry.totalValue : 0;
+  
+  let holdingReturn = 0;
+  if (finalInvested > 0) {
+    holdingReturn = (currentValue - finalInvested) / finalInvested;
   }
 
   return {
     dailyPortfolio,
-    corporateActions,
-    missingPriceDates: missingPriceDates.slice(0, 200),
+    corporateActions: rawActions,
+    missingPriceDates,
+    tradeLog: trades,
+    symbolMap,
+    reconciliationWarnings: [],
+    auditAlerts: [],
     summary: {
       totalInvested: finalInvested,
-      peakValue,
+      peakValue: Math.max(0, ...vals),
       currentValue,
       holdingReturn,
       totalDividends,
-      uniqueStocks: Object.keys(holdings).filter(s => s !== "$CASH"),
-      dateRange: { start: sorted[0], end: sorted[sorted.length - 1] },
-    },
-    tradeLog: trades,
-    symbolMap,
-    reconciliationWarnings: Array.from(reconciliationWarnings),
-    auditAlerts: Array.from(auditAlerts),
+      totalRealizedGain,
+      uniqueStocks: Object.keys(symbolMap),
+      dateRange: { start: sorted[0], end: sorted[sorted.length - 1] }
+    }
   };
 }

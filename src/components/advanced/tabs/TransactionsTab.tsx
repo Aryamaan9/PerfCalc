@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import { Trade, parseTrades } from "@/lib/advancedEngine";
 
-export default function TransactionsTab({ familyId, userId, brokerId, trades, setTrades, setHasUnsavedChanges }: any) {
+export default function TransactionsTab({ familyId, userId, brokerId, trades, setTrades, actions, setActions, setHasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [sortKey, setSortKey] = useState<keyof Trade>("date");
@@ -34,6 +34,10 @@ export default function TransactionsTab({ familyId, userId, brokerId, trades, se
   };
 
   const handleDelete = (t: Trade) => {
+    if (t.linkedActionId && setActions && actions) {
+      const updatedActions = actions.map((a: any) => a.id === t.linkedActionId ? { ...a, status: "PENDING" } : a);
+      setActions(updatedActions);
+    }
     setTrades(trades.filter((item: Trade) => item !== t));
     setHasUnsavedChanges(true);
   };
@@ -72,6 +76,18 @@ export default function TransactionsTab({ familyId, userId, brokerId, trades, se
       });
 
       if (!res.ok) throw new Error("Failed to save");
+      
+      // Trigger background auto-fetch for corporate actions
+      fetch("/api/portfolio/advancedAutoFetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          familyId: familyId || "defaultFamily",
+          userId,
+          brokerId
+        })
+      }).catch(err => console.error("AutoFetch background error:", err));
+
       alert("Saved successfully!");
       setHasUnsavedChanges(false);
     } catch (err: any) {
@@ -151,30 +167,34 @@ export default function TransactionsTab({ familyId, userId, brokerId, trades, se
             {filteredAndSortedTrades.map((t: Trade, idx: number) => (
               <tr key={idx}>
                 <td>
-                  <input type="date" value={t.date} onChange={e => handleEdit(t, "date", e.target.value)} style={{ width: "120px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="date" value={t.date} onChange={e => handleEdit(t, "date", e.target.value)} disabled={!!t.linkedActionId} style={{ width: "120px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
-                  <input type="text" value={t.symbol} onChange={e => handleEdit(t, "symbol", e.target.value)} style={{ width: "90px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="text" value={t.symbol} onChange={e => handleEdit(t, "symbol", e.target.value)} disabled={!!t.linkedActionId} style={{ width: "90px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
-                  <select value={t.side} onChange={e => handleEdit(t, "side", e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
+                  <select value={t.side} onChange={e => handleEdit(t, "side", e.target.value)} disabled={!!t.linkedActionId} style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }}>
                     <option value="Buy">Buy</option>
                     <option value="Sell">Sell</option>
                     <option value="Transfer In">Transfer In</option>
                     <option value="Transfer Out">Transfer Out</option>
+                    <option value="Split Adjust">Split Adjust</option>
+                    <option value="Dividend Payout">Dividend Payout</option>
+                    <option value="Bonus Issue">Bonus Issue</option>
+                    <option value="Merger Swap">Merger Swap</option>
                   </select>
                 </td>
                 <td>
-                  <input type="number" value={t.qty} onChange={e => handleEdit(t, "qty", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.qty} onChange={e => handleEdit(t, "qty", parseFloat(e.target.value) || 0)} disabled={!!t.linkedActionId} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
-                  <input type="number" value={t.fillPrice} onChange={e => handleEdit(t, "fillPrice", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.fillPrice} onChange={e => handleEdit(t, "fillPrice", parseFloat(e.target.value) || 0)} disabled={!!t.linkedActionId} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
-                  <input type="number" value={t.commission} onChange={e => handleEdit(t, "commission", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.commission} onChange={e => handleEdit(t, "commission", parseFloat(e.target.value) || 0)} disabled={!!t.linkedActionId} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
-                  <input type="text" value={t.broker || ""} onChange={e => handleEdit(t, "broker", e.target.value)} placeholder="Default" style={{ width: "80px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="text" value={t.broker || ""} onChange={e => handleEdit(t, "broker", e.target.value)} disabled={!!t.linkedActionId} placeholder="Default" style={{ width: "80px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: t.linkedActionId ? 0.5 : 1 }} />
                 </td>
                 <td>
                   <button onClick={() => handleDelete(t)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕ Remove</button>
