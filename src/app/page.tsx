@@ -233,12 +233,18 @@ export default function HomePage() {
                 <div className="brand-sub">Portfolio Analytics Platform</div>
               </div>
             </div>
-            {result && (
-              <div className="header-date">
-                <span>📅</span>
-                <span>{formatDateUI(result.summary.dateRange.start)} — {formatDateUI(result.summary.dateRange.end)}</span>
-              </div>
-            )}
+            
+            <div className="header-actions" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <a href="/advanced" className="btn btn-primary" style={{ backgroundColor: "#2b5cff", border: "none" }}>
+                🚀 Launch Advanced Mode
+              </a>
+              {result && (
+                <div className="header-date">
+                  <span>📅</span>
+                  <span>{formatDateUI(result.summary.dateRange.start)} — {formatDateUI(result.summary.dateRange.end)}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>

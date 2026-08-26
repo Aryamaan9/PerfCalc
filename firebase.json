@@ -9,6 +9,7 @@
   "hosting": {
     "public": "out",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true,
     "rewrites": [
       {
         "source": "/api/analyze",
@@ -27,8 +28,24 @@
         "function": "analyzePortfolioDB"
       },
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/api/portfolio/advancedList",
+        "function": "advancedList"
+      },
+      {
+        "source": "/api/portfolio/advancedSave",
+        "function": "advancedSave"
+      },
+      {
+        "source": "/api/portfolio/advancedAnalyze",
+        "function": "advancedAnalyze"
+      },
+      {
+        "source": "/api/portfolio/advancedAutoFetch",
+        "function": "advancedAutoFetchActions"
+      },
+      {
+        "source": "/api/portfolio/advancedValidate",
+        "function": "advancedValidateTickers"
       }
     ]
   },

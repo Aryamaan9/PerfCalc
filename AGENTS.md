@@ -20,3 +20,4 @@ When working on this project, you MUST abide by the following rules:
    - Cost basis averaging
 4. **Test Before Moving On:** If you make a logic change, mentally (or via scratchpad) run through an edge case to ensure it doesn't break existing historical calculations.
 5. **No Assumptions:** If a requirement or a data format is ambiguous, **STOP AND ASK**. Do not guess how financial data should be handled.
+6. **Immutable Math Engine:** Nothing changes the current math engine or code. New features MUST always be built as add-ons on top to ensure nothing on the base breaks. This is very important.

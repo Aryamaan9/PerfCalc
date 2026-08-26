@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions";
+import { getFirestore } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 import * as XLSX from "xlsx";
 import Busboy from "busboy";
@@ -6,7 +7,7 @@ import cors from "cors";
 import { fetchHistoricalPrices } from "./services/yahooFinanceFetcher";
 
 
-admin.initializeApp();
+admin.initializeApp({ projectId: "portfolio-alyzr-83921" });
 
 const corsHandler = cors({ origin: true });
 
@@ -748,7 +749,7 @@ export const savePortfolio = functions
         const trades = parseTrades(files["trades"]);
         const actions = files["actions"] ? parseCorporateActions(files["actions"]) : [];
 
-        const db = admin.firestore();
+        const db = getFirestore(admin.app(), "default");
         await db.collection("portfolios").doc(portfolioId).set({
           trades,
           actions,
@@ -768,7 +769,7 @@ export const listPortfolios = functions
     corsHandler(req, res, async () => {
       if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
       try {
-        const db = admin.firestore();
+        const db = getFirestore(admin.app(), "default");
         const snap = await db.collection("portfolios").get();
         const portfolios = snap.docs.map(doc => doc.id);
         res.status(200).json({ portfolios });
@@ -787,7 +788,7 @@ export const analyzePortfolioDB = functions
         const { portfolioId } = req.body;
         if (!portfolioId) { res.status(400).json({ error: "portfolioId is required" }); return; }
 
-        const db = admin.firestore();
+        const db = getFirestore(admin.app(), "default");
         const doc = await db.collection("portfolios").doc(portfolioId).get();
         if (!doc.exists) { res.status(404).json({ error: "Portfolio not found" }); return; }
 
@@ -809,3 +810,6 @@ export const analyzePortfolioDB = functions
       }
     });
   });
+
+// ─── Advanced Endpoints ──────────────────────────────────────────────────────
+export * from "./advancedEndpoints";
