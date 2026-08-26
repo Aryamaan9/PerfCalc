@@ -36,7 +36,7 @@ export interface DailyPortfolioEntry {
   totalValue: number;
   stockValue: number;
   cashBalance: number;
-  holdings: Record<string, { shares: number; price: number; value: number }>;
+  holdings: Record<string, { shares: number; price: number; value: number; cost?: number; pnl?: number }>;
 }
 
 export interface AnalysisResult {
@@ -592,9 +592,13 @@ export function computePortfolio(
           missingPriceDates.push({ ticker: sym, date, interpolated: price });
         }
       }
+      
       const value = shares * price;
+      const cost = costBases[sym]?.cost || 0;
+      const pnl = value - cost;
+      
+      snap[sym] = { shares, price, value, cost, pnl };
       stockValue += value;
-      snap[sym] = { shares, price, value };
     }
 
     dailyPortfolio.push({

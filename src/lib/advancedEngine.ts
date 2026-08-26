@@ -36,7 +36,7 @@ export interface DailyPortfolioEntry {
   totalValue: number;
   stockValue: number;
   cashBalance: number;
-  holdings: Record<string, { shares: number; price: number; value: number }>;
+  holdings: Record<string, { shares: number; price: number; value: number; cost?: number; pnl?: number }>;
 }
 
 export interface AnalysisResult {
