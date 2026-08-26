@@ -50,14 +50,14 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
     }
   };
 
-  const handleEdit = (a: CorporateAction, field: keyof CorporateAction, value: any) => {
-    const updated = actions.map((item: CorporateAction) => item === a ? { ...item, [field]: value } : item);
+  const handleEdit = (idx: number, field: string, value: any) => {
+    const updated = actions.map((item: any, i: number) => i === idx ? { ...item, [field]: value } : item);
     setActions(updated);
     setHasUnsavedChanges(true);
   };
 
-  const handleDelete = (a: CorporateAction) => {
-    setActions(actions.filter((item: CorporateAction) => item !== a));
+  const handleDelete = (idx: number) => {
+    setActions(actions.filter((_: any, i: number) => i !== idx));
     setHasUnsavedChanges(true);
   };
 
@@ -154,7 +154,7 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
                 </td>
               </tr>
             )}
-            {actions.map((a, idx) => (
+            {actions.map((a: any, idx: number) => (
               <tr key={idx}>
                 <td>
                   <input type="date" value={a.date} onChange={e => handleEdit(idx, "date", e.target.value)} style={{ width: "120px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />

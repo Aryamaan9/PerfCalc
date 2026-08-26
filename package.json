@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node -e \"fs.rmSync('out/api', {recursive:true, force:true})\"",
+    "build": "node build-prod.js",
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "playwright test"
