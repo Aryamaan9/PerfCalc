@@ -46,6 +46,14 @@
       {
         "source": "/api/portfolio/advancedValidate",
         "function": "advancedValidateTickers"
+      },
+      {
+        "source": "/api/portfolio/advancedRawData",
+        "function": "advancedRawData"
+      },
+      {
+        "source": "/api/portfolio/advancedRegroup",
+        "function": "advancedRegroup"
       }
     ]
   },

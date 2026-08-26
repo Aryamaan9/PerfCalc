@@ -1,10 +1,7 @@
-"use client";
-
 import React, { useState, useRef } from "react";
 import { CorporateAction, parseCorporateActions } from "@/lib/advancedEngine";
 
-export default function CorporateActionsTab({ familyId, userId, brokerId }: any) {
-  const [actions, setActions] = useState<CorporateAction[]>([]);
+export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, setHasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -20,7 +17,8 @@ export default function CorporateActionsTab({ familyId, userId, brokerId }: any)
     const buffer = await file.arrayBuffer();
     try {
       const parsed = parseCorporateActions(buffer);
-      setActions(prev => [...prev, ...parsed].sort((a, b) => a.date.localeCompare(b.date)));
+      setActions((prev: any) => [...prev, ...parsed].sort((a: any, b: any) => a.date.localeCompare(b.date)));
+      setHasUnsavedChanges(true);
     } catch (err: any) {
       alert("Failed to parse file: " + err.message);
     }
@@ -41,8 +39,9 @@ export default function CorporateActionsTab({ familyId, userId, brokerId }: any)
       });
       const data = await res.json();
       if (data.actions) {
-        setActions(prev => [...prev, ...data.actions].sort((a: any, b: any) => a.date.localeCompare(b.date)));
+        setActions((prev: any) => [...prev, ...data.actions].sort((a: any, b: any) => a.date.localeCompare(b.date)));
         alert(`Fetched ${data.actions.length} actions!`);
+        setHasUnsavedChanges(true);
       }
     } catch (err: any) {
       alert("Fetch error: " + err.message);
@@ -51,16 +50,15 @@ export default function CorporateActionsTab({ familyId, userId, brokerId }: any)
     }
   };
 
-  const handleEdit = (index: number, field: keyof CorporateAction, value: any) => {
-    const updated = [...actions];
-    (updated[index] as any)[field] = value;
+  const handleEdit = (a: CorporateAction, field: keyof CorporateAction, value: any) => {
+    const updated = actions.map((item: CorporateAction) => item === a ? { ...item, [field]: value } : item);
     setActions(updated);
+    setHasUnsavedChanges(true);
   };
 
-  const handleDelete = (index: number) => {
-    const updated = [...actions];
-    updated.splice(index, 1);
-    setActions(updated);
+  const handleDelete = (a: CorporateAction) => {
+    setActions(actions.filter((item: CorporateAction) => item !== a));
+    setHasUnsavedChanges(true);
   };
 
   const handleAddRow = () => {
@@ -69,13 +67,15 @@ export default function CorporateActionsTab({ familyId, userId, brokerId }: any)
       symbol: "NEW.NS",
       action: "DIVIDEND",
       value: 1,
-      status: "APPLIED"
+      status: "APPLIED",
+      broker: brokerId || ""
     }, ...actions]);
+    setHasUnsavedChanges(true);
   };
 
   const handleSave = async () => {
-    if (!userId || !brokerId) {
-      alert("Please select a User ID and Broker ID from the Scope above before saving.");
+    if (!userId) {
+      alert("Please select a User ID from the Scope above before saving.");
       return;
     }
     setIsSaving(true);
@@ -86,13 +86,15 @@ export default function CorporateActionsTab({ familyId, userId, brokerId }: any)
         body: JSON.stringify({
           familyId: familyId || "defaultFamily",
           userId,
-          brokerId,
-          actionsJson: JSON.stringify(actions)
+          brokerId, // Optional in aggregate view
+          actionsJson: JSON.stringify(actions),
+          tradesJson: "[]" // Send empty trades array so it doesn't overwrite trades (actually wait!)
         })
       });
 
       if (!res.ok) throw new Error("Failed to save");
       alert("Saved successfully!");
+      setHasUnsavedChanges(false);
     } catch (err: any) {
       alert("Save error: " + err.message);
     } finally {

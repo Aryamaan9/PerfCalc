@@ -1,11 +1,11 @@
-"use client";
-
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import { Trade, parseTrades } from "@/lib/advancedEngine";
 
-export default function TransactionsTab({ familyId, userId, brokerId }: any) {
-  const [trades, setTrades] = useState<Trade[]>([]);
+export default function TransactionsTab({ familyId, userId, brokerId, trades, setTrades, setHasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
+  const [filterText, setFilterText] = useState("");
+  const [sortKey, setSortKey] = useState<keyof Trade>("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const fileInput = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -15,11 +15,11 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
     const buffer = await file.arrayBuffer();
     try {
       const parsed = parseTrades(buffer);
-      setTrades(prev => {
-        // Merge and re-sort
+      setTrades((prev: any) => {
         const merged = [...prev, ...parsed];
         return merged.sort((a, b) => a.date.localeCompare(b.date));
       });
+      setHasUnsavedChanges(true);
     } catch (err: any) {
       alert("Failed to parse file: " + err.message);
     }
@@ -27,16 +27,15 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
     if (fileInput.current) fileInput.current.value = "";
   };
 
-  const handleEdit = (index: number, field: keyof Trade, value: any) => {
-    const updated = [...trades];
-    (updated[index] as any)[field] = value;
+  const handleEdit = (t: Trade, field: keyof Trade, value: any) => {
+    const updated = trades.map((item: Trade) => item === t ? { ...item, [field]: value } : item);
     setTrades(updated);
+    setHasUnsavedChanges(true);
   };
 
-  const handleDelete = (index: number) => {
-    const updated = [...trades];
-    updated.splice(index, 1);
-    setTrades(updated);
+  const handleDelete = (t: Trade) => {
+    setTrades(trades.filter((item: Trade) => item !== t));
+    setHasUnsavedChanges(true);
   };
 
   const handleAddRow = () => {
@@ -50,11 +49,12 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
       commission: 0,
       broker: brokerId || ""
     }, ...trades]);
+    setHasUnsavedChanges(true);
   };
 
   const handleSave = async () => {
-    if (!userId || !brokerId) {
-      alert("Please select a User ID and Broker ID from the Scope above before saving.");
+    if (!userId) {
+      alert("Please select a User ID from the Scope above before saving.");
       return;
     }
     
@@ -66,19 +66,43 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
         body: JSON.stringify({
           familyId: familyId || "defaultFamily",
           userId,
-          brokerId,
+          brokerId, // Can be empty if aggregated
           tradesJson: JSON.stringify(trades)
         })
       });
 
       if (!res.ok) throw new Error("Failed to save");
       alert("Saved successfully!");
+      setHasUnsavedChanges(false);
     } catch (err: any) {
       alert("Save error: " + err.message);
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleSort = (key: keyof Trade) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortOrder("asc");
+    }
+  };
+
+  const filteredAndSortedTrades = useMemo(() => {
+    let filtered = trades.filter((t: Trade) => t.symbol.toLowerCase().includes(filterText.toLowerCase()) || t.side.toLowerCase().includes(filterText.toLowerCase()));
+    
+    filtered.sort((a: any, b: any) => {
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+      if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+      if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [trades, filterText, sortKey, sortOrder]);
 
   return (
     <div>
@@ -87,7 +111,8 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
           <h2 className="brand-name" style={{ margin: 0, fontSize: "16px" }}>Transactions <span>Manager</span></h2>
           <p className="brand-sub">Upload CSV/Excel or manually add trades.</p>
         </div>
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+          <input type="text" placeholder="Search symbol or side..." value={filterText} onChange={e => setFilterText(e.target.value)} style={{ padding: "8px 12px", borderRadius: "4px", border: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", color: "white", fontSize: "12px", width: "180px" }} />
           <input type="file" ref={fileInput} style={{ display: "none" }} accept=".csv,.xlsx,.xls" onChange={handleFileUpload} />
           <button className="template-btn" onClick={() => fileInput.current?.click()}>
             <span style={{ fontSize: "14px" }}>📂</span> Upload File
@@ -105,34 +130,34 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Symbol</th>
-              <th>Side</th>
+              <th onClick={() => handleSort("date")} style={{ cursor: "pointer" }}>Date {sortKey === "date" && (sortOrder === "asc" ? "↑" : "↓")}</th>
+              <th onClick={() => handleSort("symbol")} style={{ cursor: "pointer" }}>Symbol {sortKey === "symbol" && (sortOrder === "asc" ? "↑" : "↓")}</th>
+              <th onClick={() => handleSort("side")} style={{ cursor: "pointer" }}>Side {sortKey === "side" && (sortOrder === "asc" ? "↑" : "↓")}</th>
               <th>Qty</th>
               <th>Price</th>
               <th>Commission</th>
-              <th>Broker</th>
+              <th onClick={() => handleSort("broker")} style={{ cursor: "pointer" }}>Broker {sortKey === "broker" && (sortOrder === "asc" ? "↑" : "↓")}</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {trades.length === 0 && (
+            {filteredAndSortedTrades.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-                  No transactions yet. Upload a file or add a row.
+                  No transactions found.
                 </td>
               </tr>
             )}
-            {trades.map((t, idx) => (
+            {filteredAndSortedTrades.map((t: Trade, idx: number) => (
               <tr key={idx}>
                 <td>
-                  <input type="date" value={t.date} onChange={e => handleEdit(idx, "date", e.target.value)} style={{ width: "120px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="date" value={t.date} onChange={e => handleEdit(t, "date", e.target.value)} style={{ width: "120px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <input type="text" value={t.symbol} onChange={e => handleEdit(idx, "symbol", e.target.value)} style={{ width: "90px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="text" value={t.symbol} onChange={e => handleEdit(t, "symbol", e.target.value)} style={{ width: "90px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <select value={t.side} onChange={e => handleEdit(idx, "side", e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
+                  <select value={t.side} onChange={e => handleEdit(t, "side", e.target.value)} style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
                     <option value="Buy">Buy</option>
                     <option value="Sell">Sell</option>
                     <option value="Transfer In">Transfer In</option>
@@ -140,19 +165,19 @@ export default function TransactionsTab({ familyId, userId, brokerId }: any) {
                   </select>
                 </td>
                 <td>
-                  <input type="number" value={t.qty} onChange={e => handleEdit(idx, "qty", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.qty} onChange={e => handleEdit(t, "qty", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <input type="number" value={t.fillPrice} onChange={e => handleEdit(idx, "fillPrice", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.fillPrice} onChange={e => handleEdit(t, "fillPrice", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <input type="number" value={t.commission} onChange={e => handleEdit(idx, "commission", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="number" value={t.commission} onChange={e => handleEdit(t, "commission", parseFloat(e.target.value) || 0)} style={{ width: "70px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <input type="text" value={t.broker || ""} onChange={e => handleEdit(idx, "broker", e.target.value)} placeholder="Default" style={{ width: "80px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
+                  <input type="text" value={t.broker || ""} onChange={e => handleEdit(t, "broker", e.target.value)} placeholder="Default" style={{ width: "80px", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 8px", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "11px" }} />
                 </td>
                 <td>
-                  <button onClick={() => handleDelete(idx)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕ Remove</button>
+                  <button onClick={() => handleDelete(t)} style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "4px", cursor: "pointer", padding: "4px 8px", fontSize: "11px" }}>✕ Remove</button>
                 </td>
               </tr>
             ))}

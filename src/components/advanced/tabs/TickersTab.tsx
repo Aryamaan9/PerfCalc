@@ -1,11 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { Trade } from "@/lib/advancedEngine";
 
-export default function TickersTab({ familyId, userId, brokerId }: any) {
+export default function TickersTab({ familyId, userId, brokerId, trades }: any) {
   const [tickers, setTickers] = useState<string>("");
   const [validations, setValidations] = useState<Record<string, boolean>>({});
   const [isValidating, setIsValidating] = useState(false);
+
+  useEffect(() => {
+    if (trades && trades.length > 0) {
+      const uniqueSymbols = Array.from(new Set(trades.map((t: Trade) => t.symbol)));
+      setTickers(uniqueSymbols.join(", "));
+    }
+  }, [trades]);
 
   const handleValidate = async () => {
     const list = tickers.split(",").map(t => t.trim().toUpperCase()).filter(Boolean);

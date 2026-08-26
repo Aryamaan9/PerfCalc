@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { AnalysisResult } from "@/lib/advancedEngine";
 
 export default function HoldingsTab({ familyId, userId, brokerId }: any) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [snapshotDate, setSnapshotDate] = useState("");
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -23,6 +24,9 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
       }
       const data = await res.json();
       setResult(data);
+      if (data.dailyPortfolio?.length > 0) {
+        setSnapshotDate(data.dailyPortfolio[data.dailyPortfolio.length - 1].date);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -38,6 +42,17 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyId, userId, brokerId]);
 
+  const selectedHoldings = useMemo(() => {
+    if (!result || !result.dailyPortfolio) return {};
+    const snapshot = result.dailyPortfolio.find(d => d.date === snapshotDate);
+    if (snapshot) return snapshot.holdings;
+    
+    // Find closest date before snapshotDate if exact match not found
+    const pastSnapshots = result.dailyPortfolio.filter(d => d.date <= snapshotDate);
+    if (pastSnapshots.length > 0) return pastSnapshots[pastSnapshots.length - 1].holdings;
+    return {};
+  }, [result, snapshotDate]);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
@@ -45,9 +60,17 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
           <h2 className="brand-name" style={{ margin: 0, fontSize: "16px" }}>Holdings <span>& Audit Report</span></h2>
           <p className="brand-sub">Point-in-time holdings and system abnormality auditing.</p>
         </div>
-        <button className="template-btn" onClick={handleAnalyze} disabled={loading}>
-          {loading ? "Analyzing..." : "Refresh Audit"}
-        </button>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          {result && (
+            <>
+              <label style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Snapshot Date:</label>
+              <input type="date" value={snapshotDate} onChange={e => setSnapshotDate(e.target.value)} style={{ padding: "8px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "rgba(0,0,0,0.2)", color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: "12px" }} />
+            </>
+          )}
+          <button className="template-btn" onClick={handleAnalyze} disabled={loading}>
+            {loading ? "Analyzing..." : "Refresh Audit"}
+          </button>
+        </div>
       </div>
 
       {error && <div style={{ color: "var(--color-negative)", background: "rgba(248,113,113,0.1)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid rgba(248,113,113,0.3)", marginBottom: "24px" }}>Error: {error}</div>}
@@ -64,7 +87,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
           {/* Holdings */}
           <div style={{ flex: 1, minWidth: "400px" }}>
             <div className="chart-header">
-              <h3 className="chart-title">Current Holdings</h3>
+              <h3 className="chart-title">Holdings as of {snapshotDate}</h3>
             </div>
             <div className="table-wrap">
               <table className="data-table">
@@ -76,7 +99,12 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(result.dailyPortfolio[result.dailyPortfolio.length - 1]?.holdings || {}).map(([sym, holding]) => (
+                  {Object.keys(selectedHoldings).length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>No holdings for this date.</td>
+                    </tr>
+                  )}
+                  {Object.entries(selectedHoldings).map(([sym, holding]: any) => (
                     <tr key={sym}>
                       <td style={{ fontWeight: "bold" }}>{sym}</td>
                       <td>{holding.shares.toFixed(2)}</td>
