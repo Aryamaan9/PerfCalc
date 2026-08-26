@@ -15,6 +15,12 @@ const advancedRoutes = [
 
 const baseDir = path.join(__dirname, 'src/app/api/portfolio');
 const backupDir = path.join(__dirname, '.route_backup');
+const nextCacheDir = path.join(__dirname, '.next');
+
+// Clear Next.js cache to prevent stale type validator errors
+if (fs.existsSync(nextCacheDir)) {
+  fs.rmSync(nextCacheDir, { recursive: true, force: true });
+}
 
 // Backup and remove advanced routes
 console.log('Backing up advanced proxy routes...');
