@@ -5,7 +5,7 @@ import Busboy from "busboy";
 import cors from "cors";
 
 import { fetchHistoricalPrices } from "./services/yahooFinanceFetcher";
-import { parseTrades, parseCorporateActions, computePortfolio, Trade, CorporateAction } from "./advancedEngine";
+import { parseTrades, parseCorporateActions, computePortfolio, Trade, CorporateAction, normalizeSymbol } from "./advancedEngine";
 import { fetchCorporateActions, validateTickers } from "./advancedFeatures";
 
 const corsHandler = cors({ origin: true });
@@ -290,6 +290,8 @@ export const advancedAnalyze = functions
         });
         actions.sort((a, b) => a.date.localeCompare(b.date));
 
+        trades.forEach(t => { t.rawSymbol = t.rawSymbol || t.symbol; t.symbol = normalizeSymbol(t.symbol); });
+        actions.forEach(a => { a.symbol = normalizeSymbol(a.symbol); });
         const minimalTrades = trades.map(t => ({ symbol: t.symbol, date: t.date }));
         const minimalActions = actions.map(a => ({ symbol: a.symbol, date: a.date }));
         const prices = await fetchHistoricalPrices(minimalTrades, minimalActions);
@@ -330,7 +332,9 @@ export const advancedAutoFetchActions = functions
           if (!data) continue;
 
           const trades = data.trades || [];
+          trades.forEach((t: any) => { t.rawSymbol = t.rawSymbol || t.symbol; t.symbol = normalizeSymbol(t.symbol); });
           const existingActions = data.actions || [];
+          existingActions.forEach((a: any) => { a.symbol = normalizeSymbol(a.symbol); });
 
           if (trades.length === 0) continue;
 
