@@ -395,6 +395,7 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
 
       {showScopeManager && (
         <ScopeManagerModal
+          families={families}
           onClose={() => setShowScopeManager(false)}
           onRegroup={async () => {
             setShowScopeManager(false);
