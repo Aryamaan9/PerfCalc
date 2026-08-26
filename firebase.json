@@ -1,0 +1,46 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    }
+  ],
+  "hosting": {
+    "public": "out",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/analyze",
+        "function": "analyzePortfolio"
+      },
+      {
+        "source": "/api/portfolio/save",
+        "function": "savePortfolio"
+      },
+      {
+        "source": "/api/portfolio/list",
+        "function": "listPortfolios"
+      },
+      {
+        "source": "/api/portfolio/analyze",
+        "function": "analyzePortfolioDB"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

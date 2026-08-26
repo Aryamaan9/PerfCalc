@@ -1,0 +1,29 @@
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-static";
+
+const CSV = `Ticker,Date,Close
+APOLLOPIPE.NS,31-03-2021,913.85
+APOLLOPIPE.NS,07-04-2021,990.65
+AUBANK.NS,26-05-2021,963.72
+AUBANK.NS,30-07-2021,1209.52
+BAJFINANCE.NS,01-07-2022,5376.31
+BAJAJFINSV.NS,01-07-2022,10975.04
+AUBANK.NS,04-07-2022,568.01
+IRFC.NS,12-07-2022,20.23
+AUBANK.NS,14-07-2022,557.93
+BAJFINANCE.NS,08-07-2022,5400.10
+IRFC.NS,24-08-2022,21.50
+AUBANK.NS,07-09-2022,545.00
+BAJAJFINSV.NS,07-09-2022,10800.00
+IRFC.NS,07-09-2022,22.10`;
+
+export function GET() {
+  return new NextResponse(CSV, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="prices_template.csv"',
+    },
+  });
+}

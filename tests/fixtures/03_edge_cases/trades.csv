@@ -1,0 +1,5 @@
+Symbol,Side,Qty,Fill Price,Commission,Closing Time
+NSE:WIPRO,Buy,50,400,15.5,01-01-2023
+ITC.NS,Buy,100,350,0,15-01-2023
+NSE:WIPRO,Sell,50,420,10,01-02-2023
+ITC,Buy,20,380,5,15-02-2023
