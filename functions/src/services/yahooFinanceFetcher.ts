@@ -67,11 +67,12 @@ export async function fetchHistoricalPrices(
     // Process batch concurrently
     const promises = batch.map(async (symbol) => {
       try {
-        const results = await yahooFinance.historical(symbol, {
+        const chartData = await yahooFinance.chart(symbol, {
           period1,
           period2,
           interval: '1d',
-        }) as any[];
+        });
+        const results = chartData.quotes as any[];
         
         for (const res of results) {
           if (res.close) {
