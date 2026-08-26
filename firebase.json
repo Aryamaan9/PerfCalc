@@ -54,6 +54,10 @@
       {
         "source": "/api/portfolio/advancedRegroup",
         "function": "advancedRegroup"
+      },
+      {
+        "source": "/api/portfolio/advancedDelete",
+        "function": "advancedDelete"
       }
     ]
   },
