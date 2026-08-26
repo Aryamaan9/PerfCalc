@@ -109,11 +109,11 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "32px" }}>
             <div className="stat-card">
               <div className="stat-label">Total Portfolio Value</div>
-              <div className="stat-value">${(totals.value + cashBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="stat-value">₹{(totals.value + cashBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Total Invested Cost</div>
-              <div className="stat-value">${totals.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="stat-value">₹{totals.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Total Unrealized Gain</div>
@@ -129,7 +129,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
             </div>
             <div className="stat-card">
               <div className="stat-label">Cash Balance</div>
-              <div className="stat-value">${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="stat-value">₹{cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
           </div>
 
@@ -165,10 +165,10 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                 {activeHoldings.map(([sym, h]: any) => (
                   <tr key={sym}>
                     <td style={{ fontWeight: "bold" }}>{sym}</td>
-                    <td style={{ textAlign: "right" }}>${(h.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>₹{(h.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }}>{(h.shares || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td style={{ textAlign: "right" }}>${(h.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: "right" }}>${(h.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>₹{(h.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>₹{(h.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }} className={(h.unrealizedGain || 0) >= 0 ? "positive" : "negative"}>
                       {(h.unrealizedGain || 0) > 0 ? "+" : ""}${(h.unrealizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
@@ -184,8 +184,8 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                     <td>Total</td>
                     <td></td>
                     <td></td>
-                    <td style={{ textAlign: "right" }}>${(totals.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: "right" }}>${(totals.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>₹{(totals.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: "right" }}>₹{(totals.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }} className={(totals.unrealized || 0) >= 0 ? "positive" : "negative"}>
                       {(totals.unrealized || 0) > 0 ? "+" : ""}${(totals.unrealized || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
@@ -221,7 +221,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                       <tr key={sym}>
                         <td style={{ fontWeight: "bold" }}>{sym}</td>
                         <td style={{ textAlign: "right" }}>0</td>
-                        <td style={{ textAlign: "right" }}>$0.00</td>
+                        <td style={{ textAlign: "right" }}>₹0.00</td>
                         <td style={{ textAlign: "right" }} className={(h.realizedGain || 0) >= 0 ? "positive" : "negative"}>
                           {(h.realizedGain || 0) > 0 ? "+" : ""}${(h.realizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
