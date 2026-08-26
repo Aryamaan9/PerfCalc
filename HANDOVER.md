@@ -1,30 +1,201 @@
-# Advanced Mode Refinement - Handover Document
+# PerfCalc — Full Agent Handover Document
 
-## 1. Work Completed in Current Session
-- **Comprehensive End-to-End Testing Suite**: 
-  - Written a full `advanced-mode.spec.ts` testing suite using Playwright.
-  - The suite covers creating Family/Client/Broker scopes, entering trades, simulating corporate actions, verifying recalculations (holdings & cost basis), and regrouping scopes.
-  - All 4 extensive E2E tests are now passing successfully (`npx playwright test`).
-- **Critical Data Loss Bugs Fixed**:
-  - `AdvancedTabs.tsx`: Fixed a payload mismatch where `transactions` was sent instead of `tradesJson`. The Firebase backend ignored it and silently failed to save trades.
-  - `CorporateActionsTab.tsx`: Fixed a payload bug where `tradesJson: "[]"` was explicitly passed in the save request. This wiped out all existing trades in the database whenever a corporate action was added. Both APIs now correctly match `advancedEndpoints.ts` schema.
-- **Scope Manager Refactored**:
-  - `ScopeManagerModal.tsx` now successfully calls `reloadFamilies` on the parent to visually update the Sidebar Tree immediately after regrouping.
+> **Last Updated:** 2026-08-26  
+> **Branch:** `advanced-mode-refinement`  
+> **Live App:** https://portfolio-alyzr-83921.web.app  
+> **Firebase Project:** `portfolio-alyzr-83921`  
+> **Git Remote:** https://github.com/Aryamaan9/PerfCalc.git  
 
-## 2. Immutability of Core Engine Maintained
-- All modifications were made purely on the frontend UI components (`AdvancedTabs.tsx`, `CorporateActionsTab.tsx`) and testing layer. 
-- The backend math engine (`computePortfolio` in `functions/src/index.ts`) was left entirely untouched, adhering to the critical immutability rule. 
+---
 
-## 3. Pending Feature Requests for Next Session
-If you are picking up this workspace, these are the requested features left on the roadmap:
-1. **Deletion Capabilities**:
-   - Allow users to permanently delete a Family, Client, or Portfolio directly from the Advanced UI (currently they can only be created and moved).
-2. **Aggregated Analytics**:
-   - The Analytics tab currently only renders the first broker's data when clicking on a User or Family.
-   - Requirement: When a User is selected, the Analytics should sum/aggregate the holdings across all their brokers. When a Family is selected, it should aggregate across all users.
-3. **Authentication & Access Control**:
-   - Currently, the app runs without auth. Auth rules need to be implemented for secure production use.
+## 🧱 Architecture Overview
 
-## 4. Next Steps
-- Implement the "Delete Scope" UI components and connect them to a Firebase endpoint.
-- Review `advancedAnalyze` endpoint to support cross-broker aggregations.
+### Stack
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16 (static export), React, TypeScript |
+| Backend | Firebase Cloud Functions (Node 20 / Gen 1) |
+| Database | Cloud Firestore |
+| Hosting | Firebase Hosting |
+| Testing | Playwright (E2E) |
+| Build | Custom `build-prod.js` script (wraps `next build`) |
+
+### Important Build Notes
+- **Never run `next build` directly.** Always use `npm run build` from the project root, which invokes `build-prod.js`. This script strips and re-injects the advanced API proxy routes into `next.config.ts` to prevent Firebase from conflicting with Next.js static export.
+- **Deploy frontend:** `npx firebase-tools deploy --only hosting` from project root.
+- **Deploy backend:** `npm run build && npx firebase-tools deploy --only functions` from the `functions/` directory.
+- **Clear Next.js cache before builds if you hit issues:** `rmdir /s /q .next` (Windows).
+
+### Two-Mode Architecture
+The app has two separate UI modes:
+
+1. **Standard Mode** (`src/app/page.tsx`): Upload CSV → compute portfolio → view charts. Uses `functions/src/index.ts` (the **immutable math engine**).
+2. **Advanced Mode** (`src/app/advanced/page.tsx`): A full Family/Client/Broker scope manager with persistent Firestore storage. Uses `functions/src/advancedEngine.ts` and `functions/src/advancedEndpoints.ts`.
+
+> ⚠️ **CRITICAL PROJECT RULE:** `functions/src/index.ts` (the Standard Mode math engine / `computePortfolio` function) must **never** be modified. All new features must be built as add-ons on top of it.
+
+---
+
+## 📁 Key File Map
+
+### Frontend
+| File | Purpose |
+|---|---|
+| `src/app/advanced/page.tsx` | Advanced mode page entry point |
+| `src/components/advanced/AdvancedTabs.tsx` | Main shell: mProfit-style sidebar, scope selection, tab routing |
+| `src/components/advanced/ScopeManagerModal.tsx` | "Move Family/User" modal with searchable dropdowns |
+| `src/components/advanced/tabs/HoldingsTab.tsx` | Holdings with date picker, Cost Basis, Total Value, Unrealized P&L |
+| `src/components/advanced/tabs/TransactionsTab.tsx` | Trade ledger with search and sort |
+| `src/components/advanced/tabs/CorporateActionsTab.tsx` | Corporate actions CRUD (dividends, splits, mergers, etc.) |
+| `src/components/advanced/tabs/AnalyticsTab.tsx` | Charts for portfolio performance |
+| `src/components/advanced/tabs/TickersTab.tsx` | Ticker management |
+| `src/lib/advancedEngine.ts` | **Frontend-side type definitions** (mirrors the backend engine types) |
+
+### Backend (Cloud Functions)
+| File | Purpose |
+|---|---|
+| `functions/src/index.ts` | ⚠️ IMMUTABLE - Standard mode math engine (`computePortfolio`) |
+| `functions/src/advancedEngine.ts` | Advanced mode math engine — safe to modify |
+| `functions/src/advancedEndpoints.ts` | All Firestore CRUD endpoints for Advanced Mode |
+
+### API Proxy Routes (Auto-generated by build script)
+The following Next.js route files are **auto-created and destroyed** by `build-prod.js`. Do not edit them manually:
+- `src/app/api/portfolio/advancedList/route.ts`
+- `src/app/api/portfolio/advancedSave/route.ts`
+- `src/app/api/portfolio/advancedAnalyze/route.ts`
+- `src/app/api/portfolio/advancedRawData/route.ts`
+- `src/app/api/portfolio/advancedRegroup/route.ts`
+- `src/app/api/portfolio/advancedAutoFetch/route.ts`
+- `src/app/api/portfolio/advancedValidate/route.ts`
+
+---
+
+## ✅ Complete Work Log (All Sessions)
+
+### Session 1 — Advanced Mode Foundation (commit `af4913f`)
+**Agent:** Previous agent  
+**What was built from scratch:**
+- Created the entire Advanced Mode module (`/advanced` route, all tabs, backend engine).
+- `functions/src/advancedEngine.ts`: Full portfolio math engine with trades, corporate actions (splits, dividends, mergers, demergers, rights), cost-basis tracking, audit alerts, reconciliation warnings.
+- `functions/src/advancedEndpoints.ts`: Firestore endpoints for list, save, analyze, regroup, raw data, auto-fetch actions.
+- All 5 tab components: Transactions, Tickers, Corporate Actions, Holdings, Analytics.
+- Initial Playwright E2E test scaffolding.
+- `ARCHITECTURE_TEMPLATE.md` and `CODING_STANDARDS.md` documentation.
+
+### Session 2 — Advanced Mode Phase 2 Refinements (commit `c939dcc`)
+**Agent:** Previous agent  
+**What was built:**
+- `AdvancedTabs.tsx`: Added state lifting, auto-fetch on scope change, brokerId input field.
+- `TransactionsTab.tsx`: Added search box and sortable column headers.
+- `CorporateActionsTab.tsx`: Index-based handlers and fixed a save bug (see known bugs below).
+- `HoldingsTab.tsx`: Added snapshot date picker — user can pick a historical date to see point-in-time holdings.
+- `ScopeManagerModal.tsx`: Initial version of the scope regroup modal.
+- Firebase proxy routes created to bridge Next.js static export to Cloud Functions.
+- Full Playwright E2E test suite written (`tests/e2e/advanced-mode.spec.ts`).
+
+### Session 3 — mProfit Sidebar (commit `edb5fd3`)
+**Agent:** Previous agent  
+**What was built:**
+- `AdvancedTabs.tsx`: Complete rewrite into an mProfit-style hierarchical sidebar.
+- Sidebar displays Family → Client → Portfolio tree loaded from Firestore.
+- Clicking any node in the tree sets the active `familyId`, `userId`, `brokerId` scope.
+- Inline "Add" modals for creating new Families, Clients, and Brokers directly from the sidebar.
+- Auto-reload of tree after adding new nodes.
+
+### Session 4 — E2E Fixes, Data-Loss Bug Fix, Docs (commit `07f2c3a`)
+**Agent:** Previous agent  
+**Critical bugs fixed:**
+1. **`AdvancedTabs.tsx` payload bug:** The `handleSave` function was sending `transactions` as the key, but the Firebase endpoint expected `tradesJson`. All trades were silently dropped on every save.
+2. **`CorporateActionsTab.tsx` data-loss bug:** The save payload was explicitly passing `tradesJson: "[]"`, which wiped ALL trades from Firestore every time a corporate action was saved. Fixed to not send `tradesJson` from this tab.
+
+**E2E tests fixed:**
+- Test 3: Corrected the button locator from "Remove" to "✕ Remove".
+- Test 4: Playwright auto-dismisses browser `alert()` dialogs, so changed assertion to check `dialog.message()` instead of on-screen text.
+- All 4 E2E tests passing.
+
+### Session 5 — UI Fixes, Scope Modal, DB Cleanup (commit `cef2256`)
+**Agent:** Previous agent  
+**What was done:**
+- `ScopeManagerModal.tsx`: Fixed transparency bug (changed from `var(--bg-card)` to solid `#161616`). Replaced free-text inputs with `<input list>` + `<datalist>` for searchable dropdowns when choosing families.
+- `AdvancedTabs.tsx`: Passed the `families` object down to `ScopeManagerModal` to power the datalists.
+- Created and deployed a temporary `advancedDeleteMocks` Cloud Function to clean up 110+ mock broker/client/portfolio records created during Playwright testing. **This function has since been deleted from Firebase.**
+- Frontend deployed to Firebase Hosting.
+
+### Session 6 — Holdings Cost/P&L Restoration (commit `40379fa`)
+**Agent:** Current agent (this session)  
+**Problem discovered:**
+- The user reported that Holdings tab was missing Total Value, Price, Cost Basis columns. On investigation, the Advanced Engine's daily snapshot builder was only outputting `{ shares, price, value }` per holding — no cost basis was ever computed per holding even though `costBases` tracking existed in the engine.
+- The `advancedDeleteMocks` Cloud Function was still listed in Firebase but removed from code, blocking function deployments. Deleted it manually with `firebase functions:delete advancedDeleteMocks`.
+
+**What was fixed:**
+- `functions/src/advancedEngine.ts`: Updated the daily holdings snapshot builder to read from `costBases[sym]` and include `cost` and `pnl` (unrealized gain/loss) in each holding entry.
+- `functions/src/advancedEngine.ts` (interface): Updated `DailyPortfolioEntry.holdings` type to include optional `cost?: number` and `pnl?: number`.
+- `src/lib/advancedEngine.ts` (frontend types): Mirrored the same interface update.
+- `src/components/advanced/tabs/HoldingsTab.tsx`: Added **Cost Basis** and **Unrealized P&L** columns to the holdings table. P&L is color-coded green/red.
+- Both frontend and all 11 Cloud Functions fully deployed and confirmed live.
+
+---
+
+## 🐛 Known Issues & Pending Work
+
+### Pending Features (Roadmap)
+1. **Delete Scope UI** — Users cannot delete a Family, Client, or Portfolio from the UI. The backend endpoint does not exist either. Needs: a delete button in the sidebar tree + a new `advancedDelete` Cloud Function.
+2. **Aggregated Analytics** — The Analytics tab only renders data for the selected broker. When a User or Family is selected (no specific broker), it should aggregate holdings/performance across all brokers under that user/family. The `advancedAnalyze` endpoint currently requires a `brokerId`.
+3. **Authentication / Access Control** — The app runs without any auth. Firebase security rules are open. Production deployment should implement Firebase Auth.
+4. **Node.js 20 Deprecation** — Cloud Functions are running on Node 20, which is deprecated (decommissioned Oct 30, 2026). Upgrade to Node 22 before that date.
+5. **firebase-functions SDK** — Currently on v4.5.0. Should be upgraded to ≥5.1.0 for full Extensions support.
+
+### Known Quirks
+- The `advancedEngine.ts` (backend) and `src/lib/advancedEngine.ts` (frontend) are **two separate copies** of the type definitions. If you update types in the backend engine, you must mirror them in the frontend lib file.
+- When deploying functions, if you get an error about "functions found in your project but not in local source code", use `npx firebase-tools functions:delete <functionName> --region us-central1 --force` to remove the stale function before re-deploying.
+
+---
+
+## 🗂️ Firestore Data Model
+
+```
+families/{familyId}
+  ├── name: string
+  └── users/{userId}
+        ├── name: string
+        └── brokers/{brokerId}
+              ├── name: string
+              ├── tradesJson: string        ← JSON array of Trade objects
+              ├── pricesJson: string        ← JSON array of PriceRecord objects
+              └── corporateActionsJson: string  ← JSON array of CorporateAction objects
+```
+
+---
+
+## 🧪 Running Tests
+
+```bash
+# Install playwright browsers (first time only)
+npx playwright install
+
+# Run E2E tests (requires dev server running)
+npm run dev &
+npx playwright test
+
+# Run specific test file
+npx playwright test tests/e2e/advanced-mode.spec.ts
+```
+
+---
+
+## 🚀 Deployment Commands
+
+```bash
+# Frontend
+npm run build
+npx firebase-tools deploy --only hosting
+
+# Backend (from /functions directory)
+npm run build
+npx firebase-tools deploy --only functions
+
+# Both at once (from project root)
+npm run build
+cd functions && npm run build && cd ..
+npx firebase-tools deploy
+```
