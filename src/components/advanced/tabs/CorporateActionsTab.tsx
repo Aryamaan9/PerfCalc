@@ -87,8 +87,7 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
           familyId: familyId || "defaultFamily",
           userId,
           brokerId, // Optional in aggregate view
-          actionsJson: JSON.stringify(actions),
-          tradesJson: "[]" // Send empty trades array so it doesn't overwrite trades (actually wait!)
+          actionsJson: JSON.stringify(actions)
         })
       });
 

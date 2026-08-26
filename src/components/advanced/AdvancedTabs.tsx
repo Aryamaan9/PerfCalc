@@ -6,6 +6,7 @@ import TickersTab from "./tabs/TickersTab";
 import CorporateActionsTab from "./tabs/CorporateActionsTab";
 import HoldingsTab from "./tabs/HoldingsTab";
 import AnalyticsTab from "./tabs/AnalyticsTab";
+import ScopeManagerModal from "./ScopeManagerModal";
 import { Trade, CorporateAction } from "@/lib/advancedEngine";
 
 // ── Inline "Add" Modal ─────────────────────────────────────────────────────────
@@ -211,6 +212,7 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any[] }) {
   const [activeTab, setActiveTab] = useState("transactions");
+  const [showScopeManager, setShowScopeManager] = useState(false);
   const [families, setFamilies] = useState(initialFamilies);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -327,20 +329,28 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
         <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: "8px", minHeight: "42px", flexShrink: 0 }}>
           {scopeLabel ? (
             <>
-              <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+              <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-primary)" }}>
                 {scopeLabel.crumbs.join("  /  ")}
               </span>
               <span style={{ marginLeft: "8px", fontSize: "10px", padding: "2px 8px", borderRadius: "20px", background: "rgba(204,164,61,0.12)", color: "var(--ms-gold)", fontWeight: 600, letterSpacing: "0.06em" }}>
                 {scopeLabel.level}
               </span>
-              {isFetching && <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--ms-gold)" }}>⟳ Loading…</span>}
-              {hasUnsavedChanges && <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--color-warning)" }}>● Unsaved changes</span>}
+              {isFetching && <span style={{ marginLeft: "8px", fontSize: "11px", color: "var(--ms-gold)" }}>⟳ Loading…</span>}
+              {hasUnsavedChanges && <span style={{ fontSize: "11px", color: "var(--color-warning)" }}>● Unsaved changes</span>}
             </>
           ) : (
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", fontStyle: "italic" }}>
-              ← Select a Family, Client, or Portfolio from the left panel
+            <span style={{ fontSize: "14px", color: "var(--text-muted)", fontStyle: "italic" }}>
+              Select a scope from the sidebar
             </span>
           )}
+          
+          <button 
+            className="template-btn" 
+            style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '12px' }}
+            onClick={() => setShowScopeManager(true)}
+          >
+            ⚙️ Manage Scopes
+          </button>
         </div>
 
         {/* Tabs */}
@@ -382,6 +392,16 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
           )}
         </div>
       </div>
+
+      {showScopeManager && (
+        <ScopeManagerModal
+          onClose={() => setShowScopeManager(false)}
+          onRegroup={async () => {
+            setShowScopeManager(false);
+            await reloadFamilies();
+          }}
+        />
+      )}
     </div>
   );
 }

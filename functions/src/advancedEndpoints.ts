@@ -17,10 +17,34 @@ export const advancedList = functions
       if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
       try {
         const db = getFirestore(admin.app(), "default");
-        // Structure: advanced_workspaces / {familyId} / users / {userId} / brokers / {brokerId} / data
-        // For simplicity of MVP endpoint: we will just return the raw config of families/users/brokers
-        const snap = await db.collection("advanced_workspaces").get();
-        const workspaces = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Fetch all brokers via collectionGroup to reconstruct the tree
+        const brokersSnap = await db.collectionGroup("brokers").get();
+        const tree: any = {};
+        
+        brokersSnap.forEach(doc => {
+          const parts = doc.ref.path.split('/');
+          if (parts.length < 6) return;
+          const fId = parts[1];
+          const uId = parts[3];
+          const bId = parts[5];
+
+          if (!tree[fId]) tree[fId] = {};
+          if (!tree[fId][uId]) tree[fId][uId] = [];
+          if (!tree[fId][uId].includes(bId)) tree[fId][uId].push(bId);
+        });
+
+        // Convert to array format expected by frontend
+        const workspaces = Object.keys(tree).map(fId => {
+          return {
+            id: fId,
+            users: Object.keys(tree[fId]).map(uId => ({
+              id: uId,
+              brokers: tree[fId][uId].map((bId: string) => ({ id: bId }))
+            }))
+          };
+        });
+
         res.status(200).json({ workspaces });
       } catch (err: any) {
         res.status(500).json({ error: err.message });
