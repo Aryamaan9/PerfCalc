@@ -118,13 +118,13 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
             <div className="stat-card">
               <div className="stat-label">Total Unrealized Gain</div>
               <div className={`stat-value ${totals.unrealized >= 0 ? 'positive' : 'negative'}`}>
-                {totals.unrealized >= 0 ? '+' : '-'}${Math.abs(totals.unrealized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {totals.unrealized >= 0 ? '+' : '-'}₹{Math.abs(totals.unrealized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Total Realized Gain</div>
               <div className={`stat-value ${totals.realized >= 0 ? 'positive' : 'negative'}`}>
-                {totals.realized >= 0 ? '+' : '-'}${Math.abs(totals.realized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {totals.realized >= 0 ? '+' : '-'}₹{Math.abs(totals.realized).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div className="stat-card">
@@ -170,10 +170,10 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                     <td style={{ textAlign: "right" }}>₹{(h.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }}>₹{(h.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }} className={(h.unrealizedGain || 0) >= 0 ? "positive" : "negative"}>
-                      {(h.unrealizedGain || 0) > 0 ? "+" : ""}${(h.unrealizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {(h.unrealizedGain || 0) > 0 ? "+" : ""}₹{(h.unrealizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td style={{ textAlign: "right" }} className={(h.realizedGain || 0) >= 0 ? "positive" : "negative"}>
-                      {(h.realizedGain || 0) > 0 ? "+" : ""}${(h.realizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {(h.realizedGain || 0) > 0 ? "+" : ""}₹{(h.realizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}
@@ -187,7 +187,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                     <td style={{ textAlign: "right" }}>₹{(totals.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }}>₹{(totals.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: "right" }} className={(totals.unrealized || 0) >= 0 ? "positive" : "negative"}>
-                      {(totals.unrealized || 0) > 0 ? "+" : ""}${(totals.unrealized || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {(totals.unrealized || 0) > 0 ? "+" : ""}₹{(totals.unrealized || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td></td>
                   </tr>
@@ -223,7 +223,7 @@ export default function HoldingsTab({ familyId, userId, brokerId }: any) {
                         <td style={{ textAlign: "right" }}>0</td>
                         <td style={{ textAlign: "right" }}>₹0.00</td>
                         <td style={{ textAlign: "right" }} className={(h.realizedGain || 0) >= 0 ? "positive" : "negative"}>
-                          {(h.realizedGain || 0) > 0 ? "+" : ""}${(h.realizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {(h.realizedGain || 0) > 0 ? "+" : ""}₹{(h.realizedGain || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))}
