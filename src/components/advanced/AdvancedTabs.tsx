@@ -7,6 +7,7 @@ import CorporateActionsTab from "./tabs/CorporateActionsTab";
 import HoldingsTab from "./tabs/HoldingsTab";
 import AnalyticsTab from "./tabs/AnalyticsTab";
 import { Trade, CorporateAction } from "@/lib/advancedEngine";
+import ScopeManagerModal from "./ScopeManagerModal";
 
 // ── Inline "Add" Modal ─────────────────────────────────────────────────────────
 function AddModal({ title, label, onConfirm, onCancel }: { title: string; label: string; onConfirm: (v: string) => void; onCancel: () => void }) {
@@ -34,7 +35,7 @@ function AddModal({ title, label, onConfirm, onCancel }: { title: string; label:
 }
 
 // ── Sidebar Tree ──────────────────────────────────────────────────────────────
-function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBrokerId, onSelect, onReload }: any) {
+function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBrokerId, onSelect, onReload, onManageScopes }: any) {
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({});
   const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
   const [modal, setModal] = useState<null | { type: "family" | "user" | "broker"; parentFamily?: string; parentUser?: string }>(null);
@@ -75,6 +76,20 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
     setModal(null);
   };
 
+  const handleDelete = async (type: "family"|"user"|"broker", fId: string, uId?: string, bId?: string) => {
+    if (!confirm(`Are you sure you want to delete this ${type}? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch("/api/portfolio/advancedDelete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType: type, familyId: fId, userId: uId, brokerId: bId })
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      await onReload();
+    } catch(e: any) {
+      alert(e.message);
+    }
+  };
   const rowBase: React.CSSProperties = { display: "flex", alignItems: "center", width: "100%", border: "none", background: "none", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-mono)", transition: "background 0.15s" };
   const isSelected = (fId: string, uId?: string, bId?: string) =>
     selectedFamilyId === fId && selectedUserId === (uId ?? "") && selectedBrokerId === (bId ?? "");
@@ -131,8 +146,13 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
               >
                 <span>📁</span>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{family.id}</span>
-                <span style={{ marginLeft: "auto", fontSize: "10px", color: "var(--text-muted)", flexShrink: 0, paddingRight: "8px" }}>{users.length}</span>
+                <span style={{ marginLeft: "auto", fontSize: "10px", color: "var(--text-muted)", flexShrink: 0 }}>{users.length}</span>
               </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDelete('family', family.id); }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 8px', fontSize: '10px' }}
+                title="Delete Family"
+              >🗑</button>
             </div>
 
             {/* Users */}
@@ -159,8 +179,13 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
                         >
                           <span>👤</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.id}</span>
-                          <span style={{ marginLeft: "auto", fontSize: "10px", color: "var(--text-muted)", flexShrink: 0, paddingRight: "6px" }}>{brokers.length}</span>
+                          <span style={{ marginLeft: "auto", fontSize: "10px", color: "var(--text-muted)", flexShrink: 0 }}>{brokers.length}</span>
                         </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete('user', family.id, user.id); }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 8px', fontSize: '10px' }}
+                          title="Delete Client"
+                        >🗑</button>
                       </div>
 
                       {/* Brokers */}
@@ -169,14 +194,20 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
                           {brokers.map((broker: any) => {
                             const bActive = isSelected(family.id, user.id, broker.id);
                             return (
-                              <button
-                                key={broker.id}
-                                onClick={() => onSelect(family.id, user.id, broker.id)}
-                                style={{ ...rowBase, ...selStyle(bActive), marginLeft: "28px", padding: "5px 8px 5px 6px", fontSize: "11px", gap: "6px", overflow: "hidden" }}
-                              >
-                                <span>🏦</span>
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.id}</span>
-                              </button>
+                              <div key={broker.id} style={{ display: "flex", alignItems: "center", ...selStyle(bActive), marginLeft: "28px" }}>
+                                <button
+                                  onClick={() => onSelect(family.id, user.id, broker.id)}
+                                  style={{ ...rowBase, flex: 1, padding: "5px 8px 5px 6px", fontSize: "11px", gap: "6px", overflow: "hidden" }}
+                                >
+                                  <span>🏦</span>
+                                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.id}</span>
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDelete('broker', family.id, user.id, broker.id); }}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 8px', fontSize: '10px' }}
+                                  title="Delete Portfolio"
+                                >🗑</button>
+                              </div>
                             );
                           })}
                           {/* Add Broker */}
@@ -204,6 +235,15 @@ function SidebarTree({ families, selectedFamilyId, selectedUserId, selectedBroke
           </div>
         );
       })}
+      
+      <div style={{ marginTop: "auto", borderTop: "1px solid var(--border)" }}>
+        <button
+          onClick={onManageScopes}
+          style={{ ...rowBase, padding: "12px 14px", color: "var(--text-primary)", fontSize: "12px", gap: "6px" }}
+        >
+          <span>⚙️</span> Manage Scopes
+        </button>
+      </div>
     </div>
   );
 }
@@ -222,6 +262,7 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
   const [actions, setActions] = useState<CorporateAction[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showScopeManager, setShowScopeManager] = useState(false);
 
   const reloadFamilies = async () => {
     try {
@@ -316,6 +357,7 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
             selectedBrokerId={selectedBrokerId}
             onSelect={handleSelect}
             onReload={reloadFamilies}
+            onManageScopes={() => setShowScopeManager(true)}
           />
         )}
       </div>
@@ -382,6 +424,13 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
           )}
         </div>
       </div>
+      
+      {showScopeManager && (
+        <ScopeManagerModal
+          onClose={() => setShowScopeManager(false)}
+          onRegroup={reloadFamilies}
+        />
+      )}
     </div>
   );
 }

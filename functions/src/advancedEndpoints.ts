@@ -17,12 +17,32 @@ export const advancedList = functions
       if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
       try {
         const db = getFirestore(admin.app(), "default");
-        // Structure: advanced_workspaces / {familyId} / users / {userId} / brokers / {brokerId} / data
-        // For simplicity of MVP endpoint: we will just return the raw config of families/users/brokers
-        const snap = await db.collection("advanced_workspaces").get();
-        const workspaces = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Use collectionGroup to find all brokers, then reconstruct the hierarchy
+        const brokersSnap = await db.collectionGroup("brokers").get();
+        const tree: any = {};
+        
+        brokersSnap.forEach(doc => {
+          const parts = doc.ref.path.split('/');
+          if (parts.length < 6) return;
+          const fId = parts[1];
+          const uId = parts[3];
+          const bId = parts[5];
+
+          if (!tree[fId]) tree[fId] = { id: fId, users: {} };
+          if (!tree[fId].users[uId]) tree[fId].users[uId] = { id: uId, brokers: [] };
+          tree[fId].users[uId].brokers.push({ id: bId });
+        });
+
+        // Convert object mapping to arrays
+        const workspaces = Object.values(tree).map((f: any) => ({
+          ...f,
+          users: Object.values(f.users)
+        }));
+
         res.status(200).json({ workspaces });
       } catch (err: any) {
+        console.error("advancedList Error:", err);
         res.status(500).json({ error: err.message });
       }
     });
@@ -64,8 +84,12 @@ export const advancedSave = functions
           familyId = req.body.familyId || "defaultFamily";
           userId = req.body.userId;
           brokerId = req.body.brokerId;
-          trades = req.body.tradesJson !== undefined ? JSON.parse(req.body.tradesJson) : undefined;
-          actions = req.body.actionsJson !== undefined ? JSON.parse(req.body.actionsJson) : undefined;
+          
+          if (req.body.tradesJson !== undefined) trades = JSON.parse(req.body.tradesJson);
+          else if (req.body.trades !== undefined) trades = req.body.trades;
+          
+          if (req.body.actionsJson !== undefined) actions = JSON.parse(req.body.actionsJson);
+          else if (req.body.actions !== undefined) actions = req.body.actions;
         }
 
         if (!userId) {
@@ -172,14 +196,29 @@ export const advancedRawData = functions
 
         if (userId && brokerId) {
            await fetchBrokerData(userId, brokerId);
-        } else if (userId) {
-           const bSnap = await usersRef.doc(userId).collection("brokers").get();
-           for (const b of bSnap.docs) await fetchBrokerData(userId, b.id);
         } else {
-           const uSnap = await usersRef.get();
-           for (const u of uSnap.docs) {
-             const bSnap = await usersRef.doc(u.id).collection("brokers").get();
-             for (const b of bSnap.docs) await fetchBrokerData(u.id, b.id);
+           // We must use collectionGroup because parent documents (users) might not explicitly exist
+           const bSnap = await db.collectionGroup("brokers").get();
+           for (const doc of bSnap.docs) {
+             const parts = doc.ref.path.split('/');
+             if (parts.length < 6) continue;
+             const fId = parts[1];
+             const uId = parts[3];
+             const bId = parts[5];
+             
+             if (fId === familyId) {
+                if (!userId || uId === userId) {
+                   const data = doc.data();
+                   if (data?.trades) {
+                     data.trades.forEach((t: any) => t.broker = bId);
+                     trades.push(...data.trades);
+                   }
+                   if (data?.actions) {
+                     data.actions.forEach((a: any) => a.broker = bId);
+                     actions.push(...data.actions);
+                   }
+                }
+             }
            }
         }
 
@@ -220,14 +259,22 @@ export const advancedAnalyze = functions
 
         if (userId && brokerId) {
            await fetchBrokerData(userId, brokerId);
-        } else if (userId) {
-           const bSnap = await usersRef.doc(userId).collection("brokers").get();
-           for (const b of bSnap.docs) await fetchBrokerData(userId, b.id);
         } else {
-           const uSnap = await usersRef.get();
-           for (const u of uSnap.docs) {
-             const bSnap = await usersRef.doc(u.id).collection("brokers").get();
-             for (const b of bSnap.docs) await fetchBrokerData(u.id, b.id);
+           const bSnap = await db.collectionGroup("brokers").get();
+           for (const doc of bSnap.docs) {
+             const parts = doc.ref.path.split('/');
+             if (parts.length < 6) continue;
+             const fId = parts[1];
+             const uId = parts[3];
+             const bId = parts[5];
+             
+             if (fId === familyId) {
+                if (!userId || uId === userId) {
+                   const data = doc.data();
+                   if (data?.trades) trades.push(...data.trades);
+                   if (data?.actions) actions.push(...data.actions);
+                }
+             }
            }
         }
 
@@ -325,6 +372,43 @@ export const advancedRegroup = functions
            // Delete the old user doc itself if it existed
            const userRef = db.collection("advanced_workspaces").doc(oldFamilyId).collection("users").doc(oldUserId);
            batch.delete(userRef);
+        }
+
+        await batch.commit();
+        res.status(200).json({ success: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  });
+
+export const advancedDelete = functions
+  .runWith({ memory: "256MB" })
+  .https.onRequest((req, res) => {
+    corsHandler(req, res, async () => {
+      if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+      try {
+        const { targetType, familyId, userId, brokerId } = req.body;
+        const db = getFirestore(admin.app(), "default");
+        const batch = db.batch();
+
+        if (targetType === "broker") {
+          const bRef = db.collection("advanced_workspaces").doc(familyId).collection("users").doc(userId).collection("brokers").doc(brokerId);
+          batch.delete(bRef);
+        } else if (targetType === "user") {
+          const brokersSnap = await db.collection("advanced_workspaces").doc(familyId).collection("users").doc(userId).collection("brokers").get();
+          brokersSnap.docs.forEach(d => batch.delete(d.ref));
+          const uRef = db.collection("advanced_workspaces").doc(familyId).collection("users").doc(userId);
+          batch.delete(uRef);
+        } else if (targetType === "family") {
+          const bSnap = await db.collectionGroup("brokers").get();
+          bSnap.docs.forEach(doc => {
+            if (doc.ref.path.split('/')[1] === familyId) batch.delete(doc.ref);
+          });
+          const uSnap = await db.collection("advanced_workspaces").doc(familyId).collection("users").get();
+          uSnap.docs.forEach(doc => batch.delete(doc.ref));
+          const fRef = db.collection("advanced_workspaces").doc(familyId);
+          batch.delete(fRef);
         }
 
         await batch.commit();

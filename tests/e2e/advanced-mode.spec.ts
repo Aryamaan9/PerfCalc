@@ -6,14 +6,31 @@ test.describe('Advanced Mode Full Flow', () => {
     await page.goto('/advanced');
     await expect(page.locator('h1')).toContainText('ADVANCED');
     
-    // 2. Select scope
-    await page.selectOption('select', 'defaultFamily');
-    await page.fill('input[placeholder*="User ID"]', 'PlaywrightUser');
-    await page.fill('input[placeholder*="Broker ID"]', 'PlaywrightBroker');
-    
+    // 2. Add Scope via Sidebar
+    await page.click('text=/New Family/i');
+    await page.fill('input[placeholder="Family name"]', 'TestFamily');
+    await page.click('button:has-text("Create")');
+    await page.waitForTimeout(500);
+
+    // Expand Family and add user
+    await page.click('text=/TestFamily/i');
+    await page.click('text=/Add Client/i');
+    await page.fill('input[placeholder="Client name"]', 'TestClient');
+    await page.click('button:has-text("Create")');
+    await page.waitForTimeout(500);
+
+    // Expand Client and add broker
+    await page.click('text=/TestClient/i');
+    await page.click('text=/Add Portfolio/i');
+    await page.fill('input[placeholder*="Broker name"]', 'TestBroker');
+    await page.click('button:has-text("Create")');
+    await page.waitForTimeout(500);
+
+    // Select the broker
+    await page.click('text=/TestBroker/i');    
     // 3. Go to Transactions
     await page.click('text="Transactions"');
-    await page.click('text="➕ Add Row"');
+    await page.click('text=/Add Row/i');
     
     // Fill the new row
     await page.fill('tbody tr:first-child td:nth-child(2) input', 'AAPL');
@@ -30,11 +47,11 @@ test.describe('Advanced Mode Full Flow', () => {
     await page.click('text="Tickers"');
     await expect(page.locator('input[placeholder*="AAPL"]')).toHaveValue('AAPL');
     await page.click('text="Validate"');
-    await expect(page.locator('text="✅ Valid"')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=/Valid/i')).toBeVisible({ timeout: 10000 });
     
     // 6. Corporate Actions
     await page.click('text="Corporate Actions"');
-    await page.click('text="➕ Add Row"');
+    await page.click('text=/Add Row/i');
     await page.fill('tbody tr:first-child td:nth-child(2) input', 'AAPL');
     await page.selectOption('tbody tr:first-child td:nth-child(3) select', 'DIVIDEND');
     await page.fill('tbody tr:first-child td:nth-child(4) input', '1.5'); // Value
@@ -57,7 +74,7 @@ test.describe('Advanced Mode Full Flow', () => {
     await expect(page.locator('td', { hasText: 'AAPL' })).toBeVisible();
     
     // 9. Scope Manager
-    await page.click('text="⚙️ Manage Scopes"');
+    await page.click('text=/Manage Scopes/i');
     await expect(page.locator('text="Move What?"')).toBeVisible();
     await page.click('button:has-text("Cancel")');
     
