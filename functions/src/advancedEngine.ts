@@ -602,3 +602,64 @@ export function computePortfolio(
     }
   };
 }
+export interface HoldingStatementEntry {
+  rawSymbol: string;
+  symbol: string;
+  qty: number;
+  avgCost: number;
+  value?: number;
+}
+
+export function parseHoldingStatement(buf: any): { date: string, holdings: HoldingStatementEntry[] } {
+  const isBrowser = typeof window !== 'undefined' && buf instanceof ArrayBuffer;
+  const wb = XLSX.read(buf, { type: isBrowser ? 'array' : 'buffer', cellDates: false });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false }) as Record<string, any>[];
+  
+  const holdings: HoldingStatementEntry[] = [];
+  let detectedDate = '';
+
+  for (const r of rows) {
+    const rowString = JSON.stringify(r);
+    const dateMatch = rowString.match(/As Of Date:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+    if (dateMatch && !detectedDate) detectedDate = dateMatch[1];
+
+    let sym = '';
+    let qtyRaw: any = '';
+    let costRaw: any = '';
+
+    for (const [key, val] of Object.entries(r)) {
+      const k = key.toLowerCase().replace(/[^a-z]/g, '');
+      if (k === 'symbol' || k === 'ticker' || k === 'instrument' || k === 'stock' || k === 'scrip' || k === 'symbolname') {
+         if (!sym) sym = String(val).trim();
+      }
+      if (k === 'qty' || k === 'quantity' || k === 'totalqty' || k === 'balance' || k === 'availableqty' || k === 'holdingqty' || k === 'shares') {
+         if (qtyRaw === '') qtyRaw = val;
+      }
+      if (k === 'averagecost' || k === 'cost' || k === 'buyprice' || k === 'averageprice' || k === 'avgcost' || k === 'buyaverage' || k === 'price') {
+         if (costRaw === '') costRaw = val;
+      }
+      if (!detectedDate && (k === 'date' || k === 'asofdate')) {
+         const dateVal = parseDate(String(val));
+         if (dateVal) detectedDate = dateVal;
+      }
+    }
+
+    if (!sym) continue;
+
+    const qty = parseNumber(qtyRaw);
+    const avgCost = parseNumber(costRaw);
+    
+    if (qty > 0 || qty < 0) {
+      holdings.push({
+        rawSymbol: sym,
+        symbol: normalizeSymbol(sym),
+        qty,
+        avgCost
+      });
+    }
+  }
+
+  if (!detectedDate) detectedDate = new Date().toISOString().split('T')[0];
+  return { date: detectedDate, holdings };
+}

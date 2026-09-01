@@ -3,12 +3,21 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
     }
   ],
   "hosting": {
     "public": "out",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "cleanUrls": true,
     "rewrites": [
       {
@@ -58,6 +67,18 @@
       {
         "source": "/api/portfolio/advancedDelete",
         "function": "advancedDelete"
+      },
+      {
+        "source": "/api/portfolio/advancedUploadHoldingStatement",
+        "function": "advancedUploadHoldingStatement"
+      },
+      {
+        "source": "/api/portfolio/advancedReconcile",
+        "function": "advancedReconcile"
+      },
+      {
+        "source": "/api/portfolio/advancedGlobalPrices",
+        "function": "advancedGlobalPrices"
       }
     ]
   },

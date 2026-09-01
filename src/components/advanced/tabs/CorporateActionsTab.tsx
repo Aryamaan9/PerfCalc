@@ -4,6 +4,7 @@ import { CorporateAction, parseCorporateActions } from "@/lib/advancedEngine";
 export default function CorporateActionsTab({ familyId, userId, brokerId, actions, setActions, trades, setTrades, setHasUnsavedChanges, hasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [rawActionsFile, setRawActionsFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   
   const [fetchSymbol, setFetchSymbol] = useState("");
@@ -14,7 +15,8 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const buffer = await file.arrayBuffer();
+    setRawActionsFile(file);
+      const buffer = await file.arrayBuffer();
     try {
       const parsed = parseCorporateActions(buffer);
       setActions((prev: any) => [...prev, ...parsed].sort((a: any, b: any) => a.date.localeCompare(b.date)));
@@ -26,7 +28,25 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
   };
 
   const handleAutoFetch = async () => {
-    // ... we can leave manual autofetch for debugging
+    if (!familyId || !userId) return;
+    setIsFetching(true);
+    try {
+      const res = await fetch("/api/portfolio/advancedAutoFetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ familyId, userId, brokerId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Auto-fetch complete! New actions added: " + (data.newActionsAdded || 0) + ". Please reload the page to see them.");
+      } else {
+        alert("Failed to auto-fetch: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsFetching(false);
+    }
   };
 
   const handleEdit = (idx: number, field: string, value: any) => {
@@ -55,6 +75,25 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
     const actionId = action.id || `action-${Date.now()}-${idx}`;
     let newTrade = null;
 
+    let newTrades: any[] = [];
+    
+    // Helper to calculate total cost basis of current shares
+    let totalCostBasis = 0;
+    if (action.action === "MERGER" || action.action === "DEMERGER") {
+      let shares = 0;
+      for (const t of trades || []) {
+        if (t.symbol === action.symbol && t.date < action.date) {
+          const cost = t.qty * t.fillPrice + (t.commission || 0);
+          if (["Buy", "Transfer In"].includes(t.side)) { shares += t.qty; totalCostBasis += cost; }
+          if (["Sell", "Transfer Out"].includes(t.side)) { 
+            const avgCost = shares > 0 ? totalCostBasis / shares : 0;
+            shares -= t.qty; 
+            totalCostBasis -= (t.qty * avgCost);
+          }
+        }
+      }
+    }
+
     if (action.action === "DIVIDEND") {
       newTrade = {
         date: action.date,
@@ -79,11 +118,74 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
         broker: brokerId || "",
         linkedActionId: actionId
       };
+    } else if (action.action === "MERGER") {
+      if (!action.targetSymbol) {
+        alert("Target Symbol is required for a Merger Swap.");
+        return;
+      }
+      // Sell old
+      newTrades.push({
+        date: action.date,
+        symbol: action.symbol,
+        rawSymbol: action.symbol,
+        side: "Sell",
+        qty: sharesOnDate,
+        fillPrice: sharesOnDate > 0 ? (totalCostBasis / sharesOnDate) : 0,
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId,
+        notes: "Merger Swap - Close Out"
+      });
+      // Buy new
+      newTrades.push({
+        date: action.date,
+        symbol: action.targetSymbol,
+        rawSymbol: action.targetSymbol,
+        side: "Buy",
+        qty: sharesOnDate * action.value, // value is the merger ratio
+        fillPrice: (sharesOnDate > 0 ? totalCostBasis : 0) / (sharesOnDate * action.value),
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId,
+        notes: "Merger Swap - Acquire New"
+      });
+    } else if (action.action === "DEMERGER") {
+      if (!action.targetSymbol) {
+        alert("Target Symbol is required for Demerger Spin-off.");
+        return;
+      }
+      const alloc = action.costAllocation || 0;
+      const spinOffCost = totalCostBasis * alloc;
+      newTrades.push({
+        date: action.date,
+        symbol: action.targetSymbol,
+        rawSymbol: action.targetSymbol,
+        side: "Buy",
+        qty: sharesOnDate * action.value, // value is demerger ratio
+        fillPrice: (sharesOnDate * action.value) > 0 ? spinOffCost / (sharesOnDate * action.value) : 0,
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId,
+        notes: "Demerger Spin-off"
+      });
+    } else if (action.action === "RIGHTS") {
+      newTrade = {
+        date: action.date,
+        symbol: action.symbol,
+        rawSymbol: action.symbol,
+        side: "Buy",
+        qty: action.value, // value is the number of rights exercised
+        fillPrice: action.price || 0, // wait, rights need price! We will default to 0 if not set, user can edit.
+        commission: 0,
+        broker: brokerId || "",
+        linkedActionId: actionId,
+        notes: "Rights Issue Exercised"
+      };
     }
 
-    if (newTrade) {
-      // Add synthetic trade
-      setTrades((prev: any) => [...prev, newTrade].sort((a: any, b: any) => a.date.localeCompare(b.date)));
+    if (newTrade) newTrades.push(newTrade);
+    if (newTrades.length > 0) {
+      setTrades((prev: any) => [...prev, ...newTrades].sort((a: any, b: any) => a.date.localeCompare(b.date)));
     }
     
     // Update action status
@@ -172,6 +274,7 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
               <th>Action</th>
               <th>Value/Multiplier</th>
               <th>Target Symbol (Mergers)</th>
+                <th>Cost Alloc % (Demerger)</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -179,7 +282,7 @@ export default function CorporateActionsTab({ familyId, userId, brokerId, action
           <tbody>
             {actions.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+                <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
                   No corporate actions. Fetch or add a row.
                 </td>
               </tr>

@@ -11,28 +11,16 @@ export async function POST(req: Request) {
     
     if (isFormData) {
       body = await req.formData();
-      // Do not manually set Content-Type for FormData, node-fetch/undici handles boundary automatically
     } else {
-      body = await req.text();
-      headers["Content-Type"] = "application/json";
+      return NextResponse.json({ error: "Requires multipart/form-data" }, { status: 400 });
     }
 
-    const res = await fetch('https://portfolio-alyzr-83921.web.app/api/portfolio/advancedSave', {
+    const res = await fetch('https://portfolio-alyzr-83921.web.app/api/portfolio/advancedUploadHoldingStatement', {
       method: 'POST',
       headers,
       body: body,
     });
     
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-export async function GET(req: Request) {
-  try {
-    const res = await fetch('https://portfolio-alyzr-83921.web.app/api/portfolio/advancedSave');
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (error: any) {

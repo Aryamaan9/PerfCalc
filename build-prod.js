@@ -8,9 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const advancedRoutes = [
+const advancedRoutes = [ 'advancedGlobalPrices',
   'advancedList', 'advancedSave', 'advancedAnalyze',
-  'advancedRawData', 'advancedRegroup', 'advancedAutoFetch', 'advancedValidate', 'advancedDelete'
+  'advancedRawData', 'advancedRegroup', 'advancedAutoFetch', 'advancedValidate', 'advancedDelete', 'advancedUploadHoldingStatement', 'advancedReconcile'
 ];
 
 const baseDir = path.join(__dirname, 'src/app/api/portfolio');

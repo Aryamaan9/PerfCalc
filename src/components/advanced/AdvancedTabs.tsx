@@ -6,6 +6,8 @@ import TickersTab from "./tabs/TickersTab";
 import CorporateActionsTab from "./tabs/CorporateActionsTab";
 import HoldingsTab from "./tabs/HoldingsTab";
 import AnalyticsTab from "./tabs/AnalyticsTab";
+import GlobalPricesTab from "./tabs/GlobalPricesTab";
+import ReconciliationTab from "./tabs/ReconciliationTab";
 import { Trade, CorporateAction } from "@/lib/advancedEngine";
 import ScopeManagerModal from "./ScopeManagerModal";
 
@@ -315,6 +317,8 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
     { id: "tickers", label: "Tickers" },
     { id: "corporateActions", label: "Corporate Actions" },
     { id: "holdings", label: "Holdings & Audit" },
+    { id: "reconciliation", label: "Reconciliation" },
+    { id: "globalPrices", label: "Global Prices" },
     { id: "analytics", label: "Analytics" },
   ];
 
@@ -419,6 +423,8 @@ export default function AdvancedTabs({ initialFamilies }: { initialFamilies: any
               {activeTab === "tickers" && <TickersTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} trades={trades} />}
               {activeTab === "corporateActions" && <CorporateActionsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} actions={actions} setActions={setActions} trades={trades} setTrades={setTrades} setHasUnsavedChanges={setHasUnsavedChanges} />}
               {activeTab === "holdings" && <HoldingsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} />}
+              {activeTab === "reconciliation" && <ReconciliationTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} />}
+              {activeTab === "globalPrices" && <GlobalPricesTab />}
               {activeTab === "analytics" && <AnalyticsTab familyId={selectedFamilyId} userId={selectedUserId} brokerId={selectedBrokerId} />}
             </>
           )}

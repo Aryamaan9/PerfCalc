@@ -4,6 +4,7 @@ import { Trade, parseTrades } from "@/lib/advancedEngine";
 export default function TransactionsTab({ familyId, userId, brokerId, trades, setTrades, actions, setActions, setHasUnsavedChanges }: any) {
   const [isSaving, setIsSaving] = useState(false);
   const [filterText, setFilterText] = useState("");
+  const [rawTradeFile, setRawTradeFile] = useState<File | null>(null);
   const [sortKey, setSortKey] = useState<keyof Trade>("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -12,7 +13,8 @@ export default function TransactionsTab({ familyId, userId, brokerId, trades, se
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const buffer = await file.arrayBuffer();
+    setRawTradeFile(file);
+      const buffer = await file.arrayBuffer();
     try {
       const parsed = parseTrades(buffer);
       setTrades((prev: any) => {
@@ -64,15 +66,18 @@ export default function TransactionsTab({ familyId, userId, brokerId, trades, se
     
     setIsSaving(true);
     try {
+      const formData = new FormData();
+      formData.append("familyId", familyId || "defaultFamily");
+      formData.append("userId", userId);
+      formData.append("brokerId", brokerId);
+      formData.append("tradesJson", JSON.stringify(trades));
+      if (rawTradeFile) {
+        formData.append("trades", rawTradeFile);
+      }
+
       const res = await fetch("/api/portfolio/advancedSave", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          familyId: familyId || "defaultFamily",
-          userId,
-          brokerId, // Can be empty if aggregated
-          tradesJson: JSON.stringify(trades)
-        })
+        body: formData
       });
 
       if (!res.ok) throw new Error("Failed to save");

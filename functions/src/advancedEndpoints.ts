@@ -1,3 +1,6 @@
+import { getStorage } from "firebase-admin/storage";
+import { v4 as uuidv4 } from "uuid";
+import { parseHoldingStatement } from "./advancedEngine";
 import * as functions from "firebase-functions";
 import { getFirestore } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
@@ -54,7 +57,7 @@ export const advancedSave = functions
     corsHandler(req, res, async () => {
       if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
       try {
-        let familyId, userId, brokerId, trades, actions;
+        let familyId, userId, brokerId, trades, actions, rawTransactionsUrl, rawActionsUrl;
 
         if (req.headers["content-type"]?.includes("multipart/form-data")) {
           const files: Record<string, Buffer> = {};
@@ -77,13 +80,25 @@ export const advancedSave = functions
           familyId = fields["familyId"] || "defaultFamily";
           userId = fields["userId"];
           brokerId = fields["brokerId"];
-          trades = files["trades"] ? parseTrades(files["trades"]) : (fields["tradesJson"] ? JSON.parse(fields["tradesJson"]) : []);
-          actions = files["actions"] ? parseCorporateActions(files["actions"]) : (fields["actionsJson"] ? JSON.parse(fields["actionsJson"]) : []);
+          rawTransactionsUrl = fields["rawTransactionsUrl"];
+          rawActionsUrl = fields["rawActionsUrl"];
+          
+          if (files["trades"]) {
+            rawTransactionsUrl = await uploadFileToStorage(familyId, userId, brokerId, "trades", files["trades"], "text/csv");
+          }
+          if (files["actions"]) {
+            rawActionsUrl = await uploadFileToStorage(familyId, userId, brokerId, "actions", files["actions"], "text/csv");
+          }
+          
+          trades = fields["tradesJson"] ? JSON.parse(fields["tradesJson"]) : (files["trades"] ? parseTrades(files["trades"]) : []);
+          actions = fields["actionsJson"] ? JSON.parse(fields["actionsJson"]) : (files["actions"] ? parseCorporateActions(files["actions"]) : []);
         } else {
           // JSON payload
           familyId = req.body.familyId || "defaultFamily";
           userId = req.body.userId;
           brokerId = req.body.brokerId;
+          rawTransactionsUrl = req.body.rawTransactionsUrl;
+          rawActionsUrl = req.body.rawActionsUrl;
           
           if (req.body.tradesJson !== undefined) trades = JSON.parse(req.body.tradesJson);
           else if (req.body.trades !== undefined) trades = req.body.trades;
@@ -106,7 +121,7 @@ export const advancedSave = functions
           const updateData: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
           if (trades !== undefined) updateData.trades = trades;
           if (actions !== undefined) updateData.actions = actions;
-          batch.set(docRef, updateData, { merge: true });
+          if (rawTransactionsUrl !== undefined) updateData.rawTransactionsUrl = rawTransactionsUrl; if (rawActionsUrl !== undefined) updateData.rawActionsUrl = rawActionsUrl; batch.set(docRef, updateData, { merge: true });
         } else {
           // Saving at the user level (multi-broker routing)
           const grouped: Record<string, { trades?: any[], actions?: any[] }> = {};
@@ -133,7 +148,7 @@ export const advancedSave = functions
             const updateData: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
             if (data.trades !== undefined) updateData.trades = data.trades;
             if (data.actions !== undefined) updateData.actions = data.actions;
-            batch.set(docRef, updateData, { merge: true });
+            if (rawTransactionsUrl !== undefined) updateData.rawTransactionsUrl = rawTransactionsUrl; if (rawActionsUrl !== undefined) updateData.rawActionsUrl = rawActionsUrl; batch.set(docRef, updateData, { merge: true });
           }
 
           // But what about brokers that were completely cleared out?
@@ -225,7 +240,27 @@ export const advancedRawData = functions
         trades.sort((a, b) => a.date.localeCompare(b.date));
         actions.sort((a, b) => a.date.localeCompare(b.date));
 
-        res.status(200).json({ trades, actions });
+        let holdingStatements: any[] = [];
+        if (req.body.includeStatements) {
+          let stmtsRef;
+          if (userId && brokerId) {
+            stmtsRef = db.collection("advanced_workspaces").doc(familyId)
+              .collection("users").doc(userId)
+              .collection("brokers").doc(brokerId)
+              .collection("holding_statements");
+          } else if (userId) {
+            stmtsRef = db.collection("advanced_workspaces").doc(familyId)
+              .collection("users").doc(userId)
+              .collection("holding_statements");
+          } else {
+            stmtsRef = db.collection("advanced_workspaces").doc(familyId)
+              .collection("holding_statements");
+          }
+          const snap = await stmtsRef.get();
+          holdingStatements = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        res.status(200).json({ trades, actions, holdingStatements });
       } catch (err: any) {
         console.error("Advanced Raw Data error:", err);
         res.status(500).json({ error: err.message });
@@ -295,6 +330,18 @@ export const advancedAnalyze = functions
         const minimalTrades = trades.map(t => ({ symbol: t.symbol, date: t.date }));
         const minimalActions = actions.map(a => ({ symbol: a.symbol, date: a.date }));
         const prices = await fetchHistoricalPrices(minimalTrades, minimalActions);
+
+        // Merge Global Custom Prices
+        const globalSnap = await db.collection("advanced_global_prices").get();
+        const globalCustomPrices: any[] = [];
+        for (const doc of globalSnap.docs) {
+           const ticker = doc.id;
+           const pMap = doc.data().prices || {};
+           for (const [date, close] of Object.entries(pMap)) {
+               globalCustomPrices.push({ ticker, date, close: close as number });
+           }
+        }
+        prices.push(...globalCustomPrices);
 
         const result = computePortfolio(trades, prices, actions);
         res.status(200).json(result);
@@ -473,6 +520,362 @@ export const advancedDelete = functions
         await batch.commit();
         res.status(200).json({ success: true });
       } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  });
+
+// Utility for uploading directly to Firebase Storage bucket
+async function uploadFileToStorage(
+  familyId: string, userId: string | undefined, brokerId: string | undefined, 
+  prefix: string, buffer: Buffer, contentType: string
+): Promise<string> {
+  let bucket = getStorage().bucket("portfolio-alyzr-83921.appspot.com");
+  
+  const fileName = `${prefix}_${Date.now()}_${uuidv4().slice(0, 6)}.${contentType === "text/csv" ? "csv" : "xlsx"}`;
+  let filePath = `advanced_workspaces/${familyId}/`;
+  if (userId) filePath += `${userId}/`;
+  if (brokerId) filePath += `${brokerId}/`;
+  filePath += `raw_uploads/${fileName}`;
+  
+  try {
+    const file = bucket.file(filePath);
+    await file.save(buffer, { contentType });
+    const [url] = await file.getSignedUrl({ action: "read", expires: "01-01-2100" });
+    return url;
+  } catch (err) {
+    console.error("Storage upload failed on appspot.com:", err);
+    try {
+      bucket = getStorage().bucket("portfolio-alyzr-83921.firebasestorage.app");
+      const file = bucket.file(filePath);
+      await file.save(buffer, { contentType });
+      const [url] = await file.getSignedUrl({ action: "read", expires: "01-01-2100" });
+      return url;
+    } catch (err2) {
+      console.error("Storage upload failed on firebasestorage.app:", err2);
+      return `data:${contentType};base64,${buffer.toString("base64")}`;
+    }
+  }
+}
+
+export const advancedUploadHoldingStatement = functions
+  .runWith({ memory: "256MB" })
+  .https.onRequest((req, res) => {
+    corsHandler(req, res, async () => {
+      if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+      try {
+        let familyId, userId, brokerId;
+        const files: Record<string, Buffer> = {};
+        const fields: Record<string, string> = {};
+
+        if (req.headers["content-type"]?.includes("multipart/form-data")) {
+          const bb = Busboy({ headers: req.headers });
+          await new Promise<void>((resolve, reject) => {
+            bb.on("file", (fieldname: string, file: NodeJS.ReadableStream) => {
+              const chunks: Buffer[] = [];
+              file.on("data", (d) => chunks.push(d));
+              file.on("end", () => { files[fieldname] = Buffer.concat(chunks); });
+            });
+            bb.on("field", (name, val) => { fields[name] = val; });
+            bb.on("finish", resolve);
+            bb.on("error", reject);
+            if ((req as any).rawBody) bb.end((req as any).rawBody);
+            else req.pipe(bb);
+          });
+        } else {
+          res.status(400).json({ error: "Requires multipart/form-data" });
+        }
+
+        familyId = fields["familyId"] || "defaultFamily";
+        userId = fields["userId"];
+        brokerId = fields["brokerId"];
+        const customDate = fields["date"]; // User can override date
+
+        if (!files["file"]) {
+          res.status(400).json({ error: "Missing file" });
+          return;
+        }
+
+        // determine basic content type by looking at first few bytes
+        const buf = files["file"];
+        let contentType = "application/octet-stream";
+        if (buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+          contentType = "application/pdf";
+        } else if (buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4B) {
+          contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; // xlsx
+        } else {
+          contentType = "text/csv";
+        }
+
+        const rawUrl = await uploadFileToStorage(familyId, userId, brokerId, "holding", buf, contentType);
+        
+        let parsed: { date: string; holdings: any[] } = { date: "", holdings: [] };
+        try {
+          if (contentType !== "application/pdf") {
+            parsed = parseHoldingStatement(buf);
+          }
+        } catch (e) {
+          console.error("Failed to parse holding statement", e);
+        }
+        
+        const finalDate = customDate || parsed.date || new Date().toISOString().split("T")[0];
+
+        const db = getFirestore(admin.app(), "default");
+        let stmtRef;
+        if (userId && brokerId) {
+          stmtRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("users").doc(userId)
+            .collection("brokers").doc(brokerId)
+            .collection("holding_statements").doc();
+        } else if (userId) {
+          stmtRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("users").doc(userId)
+            .collection("holding_statements").doc();
+        } else {
+          stmtRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("holding_statements").doc();
+        }
+
+        await stmtRef.set({
+          date: finalDate,
+          holdings: parsed.holdings,
+          rawFileUrl: rawUrl,
+          uploadedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.status(200).json({ success: true, date: finalDate, id: stmtRef.id, url: rawUrl });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  });
+
+export const advancedReconcile = functions
+  .runWith({ memory: "512MB", timeoutSeconds: 60 })
+  .https.onRequest((req, res) => {
+    corsHandler(req, res, async () => {
+      if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+      try {
+        const { familyId = "defaultFamily", userId, brokerId, statementId } = req.body;
+        if (!statementId) { res.status(400).json({ error: "Missing statementId" }); return; }
+
+        const db = getFirestore(admin.app(), "default");
+        let statementsRef;
+        if (userId && brokerId) {
+          statementsRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("users").doc(userId)
+            .collection("brokers").doc(brokerId)
+            .collection("holding_statements");
+        } else if (userId) {
+          statementsRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("users").doc(userId)
+            .collection("holding_statements");
+        } else {
+          statementsRef = db.collection("advanced_workspaces").doc(familyId)
+            .collection("holding_statements");
+        }
+
+        const stmtSnap = await statementsRef.doc(statementId).get();
+        if (!stmtSnap.exists) { res.status(404).json({ error: "Statement not found" }); return; }
+        const stmtData = stmtSnap.data()!;
+        const asOfDate = stmtData.date;
+        const brokerHoldings = stmtData.holdings || [];
+
+        let trades: Trade[] = [];
+        let actions: CorporateAction[] = [];
+
+        // Dynamic aggregation
+        const usersRef = db.collection("advanced_workspaces").doc(familyId).collection("users");
+        
+        const fetchBrokerData = async (uid: string, bid: string) => {
+           const doc = await usersRef.doc(uid).collection("brokers").doc(bid).get();
+           if (doc.exists) {
+             const data = doc.data();
+             if (data?.trades) trades.push(...data.trades);
+             if (data?.actions) actions.push(...data.actions);
+           }
+        };
+
+        if (userId && brokerId) {
+           await fetchBrokerData(userId, brokerId);
+        } else {
+           const bSnap = await db.collectionGroup("brokers").get();
+           for (const doc of bSnap.docs) {
+             const parts = doc.ref.path.split('/');
+             if (parts.length < 6) continue;
+             const fId = parts[1];
+             const uId = parts[3];
+             
+             if (fId === familyId) {
+                if (!userId || uId === userId) {
+                   const data = doc.data();
+                   if (data?.trades) trades.push(...data.trades);
+                   if (data?.actions) actions.push(...data.actions);
+                }
+             }
+           }
+        }
+
+        // Sort properly since we merged arrays
+        trades.sort((a, b) => {
+          const dateComp = a.date.localeCompare(b.date);
+          if (dateComp !== 0) return dateComp;
+          if (a.side.includes("Transfer") && !b.side.includes("Transfer")) return -1;
+          if (!a.side.includes("Transfer") && b.side.includes("Transfer")) return 1;
+          if (a.side === "Buy" && b.side === "Sell") return -1;
+          if (a.side === "Sell" && b.side === "Buy") return 1;
+          return 0;
+        });
+        actions.sort((a, b) => a.date.localeCompare(b.date));
+
+        trades.forEach(t => { t.rawSymbol = t.rawSymbol || t.symbol; t.symbol = normalizeSymbol(t.symbol); });
+        actions.forEach(a => { a.symbol = normalizeSymbol(a.symbol); });
+
+        const minimalTrades = trades.map(t => ({ symbol: t.symbol, date: t.date }));
+        const minimalActions = actions.map(a => ({ symbol: a.symbol, date: a.date }));
+        
+        // Fetch prices (only up to asOfDate to be safe)
+        const prices = await fetchHistoricalPrices(minimalTrades, minimalActions);
+
+        // 3. Compute Portfolio exactly on asOfDate
+        // Merge Global Custom Prices
+          const globalSnap = await db.collection("advanced_global_prices").get();
+          const globalCustomPrices: any[] = [];
+          for (const doc of globalSnap.docs) {
+            const ticker = doc.id;
+            const pMap = doc.data().prices || {};
+            for (const [date, close] of Object.entries(pMap)) {
+                globalCustomPrices.push({ ticker, date, close: close as number });
+            }
+          }
+          prices.push(...globalCustomPrices);
+          
+          const calcResult = computePortfolio(trades, prices, actions);
+
+        // 4. Perform Full Outer Join
+        
+        const targetDaily = calcResult.dailyPortfolio.find(d => d.date === asOfDate) || calcResult.dailyPortfolio.filter(d => d.date <= asOfDate).pop();
+        const finalDaily = targetDaily ? targetDaily.holdings : {};
+        const calcHoldingsMap = new Map();
+        for (const [sym, data] of Object.entries(finalDaily)) {
+          calcHoldingsMap.set(sym, data);
+        }
+
+        const brokerHoldingsMap = new Map(brokerHoldings.map((h: any) => [h.symbol, h]));
+        
+        const allSymbols = new Set([...calcHoldingsMap.keys(), ...brokerHoldingsMap.keys()]);
+        
+        const diffReport: any[] = [];
+        
+        for (const sym of allSymbols) {
+          const ch = calcHoldingsMap.get(sym);
+          const bh = brokerHoldingsMap.get(sym);
+
+          const calcQty = ch ? ch.shares : 0;
+          const brokerQty = bh ? (bh as any).qty : 0;
+          
+          if (calcQty === 0 && brokerQty === 0) continue; // Ghost from a past trade that the broker also agrees is 0
+
+          diffReport.push({
+            symbol: sym,
+            calcQty,
+            brokerQty,
+            qtyDiff: calcQty - brokerQty,
+            calcCost: ch ? (ch as any).cost : 0,
+            brokerCost: bh ? (bh as any).avgCost * (bh as any).qty : 0,
+            brokerAvgCost: bh ? (bh as any).avgCost : 0,
+            currentValue: ch ? (ch as any).value : 0, // from our price engine
+          });
+        }
+
+        res.status(200).json({
+          asOfDate,
+          rawFileUrl: stmtData.rawFileUrl,
+          diffReport
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  });
+
+export const advancedGlobalPrices = functions
+  .runWith({ memory: "256MB" })
+  .https.onRequest((req, res) => {
+    corsHandler(req, res, async () => {
+      try {
+        const db = getFirestore(admin.app(), "default");
+        const globalPricesRef = db.collection("advanced_global_prices");
+
+        if (req.method === "GET") {
+          const snapshot = await globalPricesRef.get();
+          const tickers = snapshot.docs.map(doc => doc.id);
+          res.status(200).json({ tickers });
+          return;
+        }
+
+        if (req.method === "POST") {
+          const bb = Busboy({ headers: req.headers });
+          const files: Record<string, Buffer> = {};
+          const fields: Record<string, string> = {};
+
+          await new Promise<void>((resolve, reject) => {
+            bb.on("file", (fieldname: string, file: NodeJS.ReadableStream) => {
+              const chunks: Buffer[] = [];
+              file.on("data", (d) => chunks.push(d));
+              file.on("end", () => { files[fieldname] = Buffer.concat(chunks); });
+            });
+            bb.on("field", (name, val) => { fields[name] = val; });
+            bb.on("finish", resolve);
+            bb.on("error", reject);
+            if ((req as any).rawBody) bb.end((req as any).rawBody);
+            else req.pipe(bb);
+          });
+
+          const ticker = fields["ticker"];
+          const fileBuf = files["file"];
+
+          if (!ticker || !fileBuf) {
+            res.status(400).json({ error: "Missing ticker or file" });
+            return;
+          }
+
+          const XLSX = await import("xlsx");
+          const wb = XLSX.read(fileBuf, { type: "buffer", cellDates: false });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+
+          const priceMap: Record<string, number> = {};
+          rows.forEach(r => {
+            let d = r["Date"] || r["date"] || "";
+            let p = parseFloat(r["Close"] || r["close"] || r["Price"] || r["price"]);
+            if (d && !isNaN(p)) {
+              // try parse date to YYYY-MM-DD
+              const parsedDate = new Date(d);
+              if (!isNaN(parsedDate.getTime())) {
+                const dateStr = parsedDate.toISOString().split("T")[0];
+                priceMap[dateStr] = p;
+              }
+            }
+          });
+
+          if (Object.keys(priceMap).length === 0) {
+            res.status(400).json({ error: "No valid Date/Close rows found" });
+            return;
+          }
+
+          await globalPricesRef.doc(ticker.toUpperCase()).set({
+            prices: priceMap,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+
+          res.status(200).json({ success: true, count: Object.keys(priceMap).length });
+          return;
+        }
+
+        res.status(405).json({ error: "Method not allowed" });
+      } catch (err: any) {
+        console.error("advancedGlobalPrices error:", err);
         res.status(500).json({ error: err.message });
       }
     });

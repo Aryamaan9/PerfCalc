@@ -1,0 +1,161 @@
+.recon-container {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+}
+
+.recon-sidebar {
+  width: 250px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  padding: 15px;
+}
+
+.upload-zone {
+  border: 1px dashed var(--border-active);
+  border-radius: var(--radius-md, 8px);
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s;
+}
+.upload-zone:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--ms-gold);
+}
+
+.statement-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.statement-list li {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  color: var(--text-primary);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  transition: background 0.2s;
+}
+.statement-list li:hover {
+  background: var(--bg-card-hover);
+}
+.statement-list li.active {
+  background: rgba(201, 168, 76, 0.1);
+  font-weight: 600;
+  border-left: 3px solid var(--ms-gold);
+  border-bottom: none;
+}
+
+.recon-main {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 8px);
+  padding: 20px;
+}
+
+.recon-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.btn-download {
+  padding: 8px 16px;
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+.btn-download:hover {
+  background: rgba(201, 168, 76, 0.15);
+  border-color: var(--ms-gold);
+}
+
+.recon-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.recon-table th, .recon-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+.recon-table th {
+  color: var(--text-secondary);
+  font-family: var(--font-heading);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.row-error {
+  background-color: rgba(248, 113, 113, 0.08);
+}
+.error-text {
+  color: var(--color-negative);
+  font-weight: bold;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--ms-purple-deep);
+  border: 1px solid var(--border);
+  padding: 24px;
+  border-radius: 8px;
+  width: 400px;
+  color: var(--text-primary);
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 8px;
+  margin: 16px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  color-scheme: dark;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.modal-actions button {
+  padding: 8px 16px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+.modal-actions .primary {
+  background: var(--ms-gold);
+  color: var(--ms-purple-deepest);
+  border: none;
+  font-weight: bold;
+}

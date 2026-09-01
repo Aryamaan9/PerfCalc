@@ -50,3 +50,6 @@ firebase-debug.log*
 # Playwright & test reports
 /playwright-report/
 /test-results/
+ 
+# Scratch directory
+/scratch/
